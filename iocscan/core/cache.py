@@ -70,7 +70,16 @@ class Cache:
 
     def stats(self) -> dict:
         rows = self._conn.execute("SELECT COUNT(*), COUNT(DISTINCT ioc) FROM results").fetchone()
-        return {"rows": rows[0], "iocs": rows[1], "path": str(self.path)}
+        size_bytes = self.path.stat().st_size if self.path.exists() else 0
+        oldest_row = self._conn.execute("SELECT MIN(fetched_at) FROM results").fetchone()
+        oldest_epoch = oldest_row[0] if oldest_row and oldest_row[0] is not None else None
+        return {
+            "rows": rows[0],
+            "iocs": rows[1],
+            "path": str(self.path),
+            "size_bytes": size_bytes,
+            "oldest_epoch": oldest_epoch,
+        }
 
     def close(self) -> None:
         self._conn.close()
