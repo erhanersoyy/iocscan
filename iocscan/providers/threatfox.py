@@ -19,14 +19,20 @@ class ThreatFox(Provider):
 
     async def lookup(self, ioc: str, ioc_type: IOCType, client: httpx.AsyncClient, config: Config) -> ProviderResult:
         start = time.perf_counter()
+        headers = {}
+        abusech_key = config.key_for("abusech")
+        if abusech_key:
+            headers["Auth-Key"] = abusech_key
         payload = {"query": "search_ioc", "search_term": ioc}
         try:
-            resp = await client.post(ENDPOINT, content=json.dumps(payload))
+            resp = await client.post(ENDPOINT, content=json.dumps(payload), headers=headers)
         except httpx.HTTPError as e:
             return _err(self.name, f"network: {e.__class__.__name__}", start)
         latency = int((time.perf_counter() - start) * 1000)
         if resp.status_code == 429:
             return ProviderResult(self.name, Verdict.ERROR, "", None, "429 rate limit", latency)
+        if resp.status_code in (401, 403):
+            return ProviderResult(self.name, Verdict.ERROR, "", None, "auth failed (Auth-Key required)", latency)
         if resp.status_code >= 400:
             return ProviderResult(self.name, Verdict.ERROR, "", None, f"{resp.status_code}", latency)
         try:

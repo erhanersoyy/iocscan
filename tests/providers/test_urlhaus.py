@@ -48,3 +48,22 @@ async def test_urlhaus_malformed_returns_error():
         r = await URLhaus().lookup("x.com", IOCType.DOMAIN, c, Config())
     assert r.verdict == Verdict.ERROR
     assert "parse" in r.error
+
+
+async def test_urlhaus_sends_auth_key_header_when_configured():
+    body = (FIXTURES / "miss.json").read_text()
+    captured = {}
+    def handler(req):
+        captured["auth"] = req.headers.get("Auth-Key")
+        return httpx.Response(200, content=body)
+    async with _client(handler) as c:
+        cfg = Config(keys={"abusech": "MYKEY"})
+        await URLhaus().lookup("test.com", IOCType.DOMAIN, c, cfg)
+    assert captured["auth"] == "MYKEY"
+
+
+async def test_urlhaus_401_returns_auth_failed():
+    async with _client(lambda req: httpx.Response(401, content='{"error": "Unauthorized"}')) as c:
+        r = await URLhaus().lookup("x.com", IOCType.DOMAIN, c, Config())
+    assert r.verdict == Verdict.ERROR
+    assert "auth" in r.error.lower() or "401" in r.error
