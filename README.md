@@ -72,6 +72,21 @@ Registration is free at https://auth.abuse.ch — the same single key covers bot
 
 Results are cached in `~/.iocscan/cache.db` for 24 hours. Use `--no-cache` to bypass, `iocscan cache clear` to flush.
 
+## Whitelist (optional)
+
+`iocscan` ships with a bundled list of ~40 critical infrastructure domains
+(Google, Cloudflare, GitHub, Akamai, etc.) that always override M/S verdicts
+to `clean`. To augment with the [Tranco](https://tranco-list.eu) top-1K daily
+list (research-grade popularity ranking):
+
+```bash
+iocscan whitelist update   # fetch latest Tranco top-1K (~50 KB)
+iocscan whitelist stats    # show cache age and domain count
+```
+
+The cache lives at `~/.iocscan/tranco-1k.txt`. Re-run `update` weekly to
+keep it fresh.
+
 ## License
 
 MIT.

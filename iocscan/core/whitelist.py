@@ -6,6 +6,9 @@ high-traffic domains that appear in TI feeds as collateral.
 """
 from __future__ import annotations
 
+from functools import lru_cache
+
+from iocscan.core.tranco import load_cache
 from iocscan.providers.base import IOCType
 
 WHITELIST_DOMAINS = frozenset({
@@ -34,17 +37,29 @@ WHITELIST_DOMAINS = frozenset({
 })
 
 
+@lru_cache(maxsize=1)
+def _tranco_cache() -> frozenset[str]:
+    """Load Tranco cache once per process."""
+    from iocscan.core import tranco as _tranco_mod
+    return frozenset(load_cache(_tranco_mod.CACHE_PATH))
+
+
+def _combined() -> frozenset[str]:
+    return WHITELIST_DOMAINS | _tranco_cache()
+
+
 def is_whitelisted(ioc: str, ioc_type: IOCType) -> bool:
     """True if domain IOC matches or is a subdomain of a whitelisted domain."""
     if ioc_type != IOCType.DOMAIN:
         return False
     ioc_low = ioc.lower().strip()
-    if ioc_low in WHITELIST_DOMAINS:
+    combined = _combined()
+    if ioc_low in combined:
         return True
     parts = ioc_low.split(".")
     # Try every suffix (sub.example.com -> example.com, com)
     for i in range(1, len(parts)):
         suffix = ".".join(parts[i:])
-        if suffix in WHITELIST_DOMAINS:
+        if suffix in combined:
             return True
     return False
