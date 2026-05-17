@@ -193,7 +193,7 @@ def _cmd_config(args, config) -> int:
         return 0
     if args.config_cmd == "show":
         for k, v in config.keys.items():
-            masked = v[:4] + "…" + v[-2:] if len(v) > 6 else "***"
+            masked = v[:3] + "…" + v[-2:] if len(v) > 12 else "***"
             print(f"{k} = {masked}")
         return 0
     if args.config_cmd == "path":
