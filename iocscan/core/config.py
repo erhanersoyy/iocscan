@@ -80,7 +80,11 @@ def load_config(cli_keys: dict[str, str] | None = None) -> Config:
             settings = dict(settings)
             settings["cache_ttl_hours"] = int(ttl_env)
         except ValueError:
-            pass  # ignore malformed env var
+            import sys
+            print(
+                f"warning: IOCSCAN_CACHE_TTL='{ttl_env}' is not an integer; ignoring",
+                file=sys.stderr,
+            )
 
     return Config(
         keys=merged,
