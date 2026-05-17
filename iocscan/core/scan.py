@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 
 import httpx
@@ -8,6 +9,8 @@ import httpx
 from iocscan.core.config import Config
 from iocscan.core.verdict import aggregate, coverage
 from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
+
+log = logging.getLogger(__name__)
 
 _RATE_LIMITERS: dict[str, "_RateLimiter"] = {}
 
@@ -45,8 +48,14 @@ async def _throttled_lookup(
     client: httpx.AsyncClient,
     config: Config,
 ) -> ProviderResult:
+    log.debug("%s lookup starting for %s (%s)", provider.name, ioc, ioc_type.value)
     await _limiter_for(provider).wait()
-    return await provider.lookup(ioc, ioc_type, client, config)
+    result = await provider.lookup(ioc, ioc_type, client, config)
+    log.debug(
+        "%s lookup result for %s: verdict=%s score=%r error=%r latency=%dms",
+        provider.name, ioc, result.verdict.value, result.score, result.error, result.latency_ms,
+    )
+    return result
 
 
 @dataclass(frozen=True)

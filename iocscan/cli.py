@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
 import sys
 from pathlib import Path
@@ -103,6 +104,13 @@ def main(argv: list[str] | None = None) -> int:
         parser = _build_scan_parser()
         args = parser.parse_args(raw_argv)
         args.cmd = None
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.WARNING,
+        format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+        stream=sys.stderr,
+        force=True,
+    )
 
     cli_keys = {
         "virustotal": args.vt_key,
