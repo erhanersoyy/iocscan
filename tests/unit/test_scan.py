@@ -154,3 +154,41 @@ async def test_apply_whitelist_helper_non_whitelisted():
     v, w = _apply_whitelist("evil.com", IOCType.DOMAIN, Verdict.MALICIOUS)
     assert v == Verdict.MALICIOUS
     assert w is False
+
+
+async def test_rate_limiter_does_not_hold_lock_during_sleep():
+    """Concurrent callers should be able to compute their scheduled times
+    without serializing through each other's sleeps."""
+    from iocscan.core import scan as scan_mod
+    scan_mod._RATE_LIMITERS.clear()
+
+    timestamps: list[float] = []
+
+    class TimedProvider(Provider):
+        name = "timed"
+        supports = {IOCType.IP}
+        requires_key = False
+        max_rps = 5.0  # min interval 200ms
+
+        async def lookup(self, ioc, ioc_type, client, config):
+            import time
+            timestamps.append(time.perf_counter())
+            return ProviderResult(self.name, Verdict.CLEAN, "ok", None, None, 0)
+
+    # Fire 3 scans concurrently (different IOCs).
+    async with httpx.AsyncClient() as client:
+        import asyncio
+        await asyncio.gather(
+            scan_ioc("1.1.1.1", IOCType.IP, [TimedProvider()], client, Config()),
+            scan_ioc("2.2.2.2", IOCType.IP, [TimedProvider()], client, Config()),
+            scan_ioc("3.3.3.3", IOCType.IP, [TimedProvider()], client, Config()),
+        )
+
+    # Sort timestamps (order may vary)
+    timestamps.sort()
+    # First call at t=0, second at t>=200ms, third at t>=400ms
+    assert timestamps[1] - timestamps[0] >= 0.18, f"gap1: {timestamps[1] - timestamps[0]:.3f}"
+    assert timestamps[2] - timestamps[1] >= 0.18, f"gap2: {timestamps[2] - timestamps[1]:.3f}"
+    # Total elapsed should be ~400ms, not ~600ms (which would happen if locks chained)
+    assert timestamps[2] - timestamps[0] < 0.55, \
+        f"total elapsed {timestamps[2] - timestamps[0]:.3f}s suggests chained locks"
