@@ -2,7 +2,7 @@
 
 Blue-team CLI that produces a consolidated `malicious / suspicious / clean / unknown` verdict for IP addresses and domains by querying nine open-source threat-intelligence providers in parallel.
 
-Five providers work out of the box (no API key). Four more activate when you add free-tier API keys.
+Four providers work out of the box (no API key). Five more activate when you add free-tier API keys.
 
 ## Install
 
@@ -31,7 +31,7 @@ iocscan --json 8.8.8.8 > result.json
 | VirusTotal | yes (free 500/day) | IP, domain |
 | AbuseIPDB | yes (free 1000/day) | IP |
 | AlienVault OTX | yes (free ~10k/h) | IP, domain |
-| GreyNoise Community | yes (free 50/week) | IP |
+| GreyNoise Community | no (optional key for higher rate limit; anonymous use is rate-limited) | IP |
 
 ## Configure keys
 
@@ -40,7 +40,7 @@ iocscan config set abusech    YOUR_KEY  # single key for URLhaus + ThreatFox
 iocscan config set virustotal YOUR_KEY
 iocscan config set abuseipdb  YOUR_KEY
 iocscan config set otx        YOUR_KEY
-iocscan config set greynoise  YOUR_KEY
+iocscan config set greynoise  YOUR_KEY  # optional; raises anonymous rate limit
 ```
 
 Or via environment variables:
@@ -49,7 +49,7 @@ export IOCSCAN_ABUSECH_KEY=...  # URLhaus + ThreatFox
 export IOCSCAN_VT_KEY=...
 export IOCSCAN_ABUSEIPDB_KEY=...
 export IOCSCAN_OTX_KEY=...
-export IOCSCAN_GREYNOISE_KEY=...
+export IOCSCAN_GREYNOISE_KEY=...  # optional
 ```
 
 ## Notes

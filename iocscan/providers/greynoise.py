@@ -13,18 +13,19 @@ ENDPOINT = "https://api.greynoise.io/v3/community"
 class GreyNoise(Provider):
     name = "greynoise"
     supports = {IOCType.IP}
-    requires_key = True
+    requires_key = False
     max_rps = 1.0
 
     async def lookup(self, ioc: str, ioc_type: IOCType, client: httpx.AsyncClient, config: Config) -> ProviderResult:
         if ioc_type != IOCType.IP:
             return ProviderResult(self.name, Verdict.UNKNOWN, "—", None, None, 0)
-        key = config.key_for(self.name)
-        if not key:
-            return ProviderResult(self.name, Verdict.ERROR, "", None, "key required", 0)
         start = time.perf_counter()
+        headers = {}
+        key = config.key_for(self.name)
+        if key:
+            headers["key"] = key
         try:
-            resp = await client.get(f"{ENDPOINT}/{ioc}", headers={"key": key})
+            resp = await client.get(f"{ENDPOINT}/{ioc}", headers=headers)
         except httpx.HTTPError as e:
             return _err(self.name, f"network: {e.__class__.__name__}", start)
         latency = int((time.perf_counter() - start) * 1000)
