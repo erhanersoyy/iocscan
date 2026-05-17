@@ -16,8 +16,8 @@ def test_all_are_provider_instances():
         assert isinstance(p, Provider)
 
 
-def test_five_keyless_four_keyed():
+def test_keyless_and_keyed_counts():
     keyless = [p for p in ALL_PROVIDERS if not p.requires_key]
     keyed = [p for p in ALL_PROVIDERS if p.requires_key]
-    assert len(keyless) == 5
-    assert len(keyed) == 4
+    assert len(keyless) == 6   # URLhaus, ThreatFox, Feodo, Tor, Spamhaus, GreyNoise
+    assert len(keyed) == 3     # VirusTotal, AbuseIPDB, OTX
