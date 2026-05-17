@@ -213,7 +213,16 @@ def _cmd_cache(args, config) -> int:
             return 0
         if args.cache_cmd == "stats":
             s = cache.stats()
-            print(f"path: {s['path']}\nrows: {s['rows']}\niocs: {s['iocs']}")
+            print(f"path: {s['path']}")
+            print(f"rows: {s['rows']}")
+            print(f"iocs: {s['iocs']}")
+            print(f"size: {s['size_bytes']} bytes")
+            if s.get("oldest_epoch"):
+                import datetime
+                age = datetime.datetime.fromtimestamp(s['oldest_epoch']).isoformat()
+                print(f"oldest: {age}")
+            else:
+                print("oldest: (empty)")
             return 0
         print("usage: iocscan cache {clear|stats}", file=sys.stderr)
         return 3

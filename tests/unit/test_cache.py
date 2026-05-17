@@ -50,3 +50,11 @@ def test_cache_stats(tmp_home):
     stats = c.stats()
     assert stats["rows"] == 3
     assert stats["iocs"] == 2
+
+
+def test_cache_stats_includes_size_and_oldest(tmp_home):
+    c = Cache(tmp_home / "cache.db", ttl_seconds=60)
+    c.put("1.2.3.4", [_r("vt")])
+    stats = c.stats()
+    assert "size_bytes" in stats and stats["size_bytes"] > 0
+    assert "oldest_epoch" in stats and stats["oldest_epoch"] > 0
