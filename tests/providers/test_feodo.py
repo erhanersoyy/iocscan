@@ -46,3 +46,30 @@ async def test_error_response():
     async with _c(lambda req: httpx.Response(503)) as c:
         r = await Feodo().lookup("1.2.3.4", IOCType.IP, c, Config())
     assert r.verdict == Verdict.ERROR
+
+
+async def test_concurrent_load_calls_fetch_only_once(monkeypatch):
+    """When 5 coroutines hit _load concurrently, only one HTTP request fires."""
+    import asyncio
+    from iocscan.providers import feodo
+    feodo._CACHE.clear()
+    feodo._CACHE_TS.clear()
+
+    call_count = {"n": 0}
+    body = '[{"ip_address": "1.2.3.4", "malware": "Emotet"}]'
+
+    async def slow_handler(req):
+        call_count["n"] += 1
+        await asyncio.sleep(0.05)  # simulate network delay
+        return httpx.Response(200, content=body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(slow_handler), timeout=5.0) as c:
+        provider = feodo.Feodo()
+        from iocscan.core.config import Config
+        from iocscan.providers.base import IOCType
+        results = await asyncio.gather(*[
+            provider.lookup("1.2.3.4", IOCType.IP, c, Config()) for _ in range(5)
+        ])
+
+    assert call_count["n"] == 1, f"expected 1 HTTP call, got {call_count['n']}"
+    assert all(r.verdict.value == "malicious" for r in results)

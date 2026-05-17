@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 
 import httpx
@@ -11,6 +12,7 @@ ENDPOINT = "https://feodotracker.abuse.ch/downloads/ipblocklist.json"
 _CACHE: dict[str, dict] = {}
 _CACHE_TS: dict[str, float] = {}
 _CACHE_TTL = 6 * 3600  # in-process cache 6h
+_LOCK = asyncio.Lock()
 
 
 class Feodo(Provider):
@@ -40,14 +42,19 @@ class Feodo(Provider):
         now = time.time()
         if "data" in _CACHE and now - _CACHE_TS.get("data", 0) < _CACHE_TTL:
             return _CACHE["data"]
-        resp = await client.get(ENDPOINT)
-        if resp.status_code >= 400:
-            raise ValueError(f"{resp.status_code}")
-        data = resp.json()
-        index = {entry["ip_address"]: entry for entry in data}
-        _CACHE["data"] = index
-        _CACHE_TS["data"] = now
-        return index
+        async with _LOCK:
+            # re-check inside the lock
+            now = time.time()
+            if "data" in _CACHE and now - _CACHE_TS.get("data", 0) < _CACHE_TTL:
+                return _CACHE["data"]
+            resp = await client.get(ENDPOINT)
+            if resp.status_code >= 400:
+                raise ValueError(f"{resp.status_code}")
+            data = resp.json()
+            index = {entry["ip_address"]: entry for entry in data}
+            _CACHE["data"] = index
+            _CACHE_TS["data"] = now
+            return index
 
 
 def _err(name: str, msg: str, start: float) -> ProviderResult:
