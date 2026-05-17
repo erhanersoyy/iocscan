@@ -6,7 +6,7 @@
 
 ## 1. Purpose
 
-`iocscan` is a Python CLI tool that takes IP addresses and domain names and returns a consolidated `malicious / suspicious / clean / unknown` verdict by querying nine open-source threat intelligence providers in parallel. It runs without configuration on first install (five no-key providers always work) and gains coverage as the user adds free-tier API keys.
+`iocscan` is a Python CLI tool that takes IP addresses and domain names and returns a consolidated `malicious / suspicious / clean / unknown` verdict by querying nine open-source threat intelligence providers in parallel. It runs without configuration on first install (three no-key providers always work) and gains coverage as the user adds free-tier API keys.
 
 ## 2. Goals & Non-Goals
 
