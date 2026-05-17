@@ -45,3 +45,21 @@ async def test_malformed():
         r = await ThreatFox().lookup("x", IOCType.IP, c, Config())
     assert r.verdict == Verdict.ERROR
     assert "parse" in r.error
+
+
+async def test_threatfox_sends_auth_key_header_when_configured():
+    body = (FIX / "miss.json").read_text()
+    captured = {}
+    def h(req):
+        captured["auth"] = req.headers.get("Auth-Key")
+        return httpx.Response(200, content=body)
+    async with _c(h) as c:
+        cfg = Config(keys={"abusech": "MYKEY"})
+        await ThreatFox().lookup("1.2.3.4", IOCType.IP, c, cfg)
+    assert captured["auth"] == "MYKEY"
+
+
+async def test_threatfox_401_returns_auth_failed():
+    async with _c(lambda req: httpx.Response(401, content='{"error":"Unauthorized"}')) as c:
+        r = await ThreatFox().lookup("x", IOCType.IP, c, Config())
+    assert r.verdict == Verdict.ERROR

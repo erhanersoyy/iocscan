@@ -23,8 +23,8 @@ iocscan --json 8.8.8.8 > result.json
 
 | Provider | Key required | IOC types |
 |---|---|---|
-| URLhaus | no | IP, domain |
-| ThreatFox | no | IP, domain |
+| URLhaus | yes (free, single key for all abuse.ch) | IP, domain |
+| ThreatFox | yes (free, single key for all abuse.ch) | IP, domain |
 | Feodo Tracker | no | IP |
 | Tor Exit List | no | IP |
 | Spamhaus DROP | no | IP |
@@ -36,6 +36,7 @@ iocscan --json 8.8.8.8 > result.json
 ## Configure keys
 
 ```bash
+iocscan config set abusech    YOUR_KEY  # single key for URLhaus + ThreatFox
 iocscan config set virustotal YOUR_KEY
 iocscan config set abuseipdb  YOUR_KEY
 iocscan config set otx        YOUR_KEY
@@ -44,11 +45,17 @@ iocscan config set greynoise  YOUR_KEY
 
 Or via environment variables:
 ```bash
+export IOCSCAN_ABUSECH_KEY=...  # URLhaus + ThreatFox
 export IOCSCAN_VT_KEY=...
 export IOCSCAN_ABUSEIPDB_KEY=...
 export IOCSCAN_OTX_KEY=...
 export IOCSCAN_GREYNOISE_KEY=...
 ```
+
+## Notes
+
+abuse.ch (URLhaus and ThreatFox) added an Auth-Key requirement to their query APIs.
+Registration is free at https://auth.abuse.ch — the same single key covers both providers.
 
 ## Exit codes
 

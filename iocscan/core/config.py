@@ -11,6 +11,7 @@ CONFIG_DIR = ".iocscan"
 CONFIG_FILE = "config.toml"
 
 ENV_VARS = {
+    "abusech":    "IOCSCAN_ABUSECH_KEY",
     "virustotal": "IOCSCAN_VT_KEY",
     "abuseipdb":  "IOCSCAN_ABUSEIPDB_KEY",
     "otx":        "IOCSCAN_OTX_KEY",
