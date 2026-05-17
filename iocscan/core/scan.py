@@ -9,6 +9,8 @@ from iocscan.core.config import Config
 from iocscan.core.verdict import aggregate, coverage
 from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
 
+_RATE_LIMITERS: dict[str, "_RateLimiter"] = {}
+
 
 @dataclass(frozen=True)
 class ScanResult:
@@ -29,7 +31,16 @@ async def scan_ioc(
 ) -> ScanResult:
     applicable = [p for p in providers if ioc_type in p.supports]
     tasks = [p.lookup(ioc, ioc_type, client, config) for p in applicable]
-    results = await asyncio.gather(*tasks)
+    raw = await asyncio.gather(*tasks, return_exceptions=True)
+    results: list[ProviderResult] = []
+    for provider, item in zip(applicable, raw):
+        if isinstance(item, BaseException):
+            results.append(ProviderResult(
+                provider.name, Verdict.ERROR, "", None,
+                f"unhandled: {item.__class__.__name__}: {item}", 0,
+            ))
+        else:
+            results.append(item)
     final_verdict = aggregate(results, min_coverage=config.min_coverage)
     responding, total = coverage(results)
     return ScanResult(
