@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import time
 
@@ -12,6 +13,7 @@ ENDPOINT = "https://www.spamhaus.org/drop/drop.txt"
 _CACHE: dict[str, list[tuple[ipaddress.IPv4Network, str]]] = {}
 _CACHE_TS: dict[str, float] = {}
 _CACHE_TTL = 6 * 3600
+_LOCK = asyncio.Lock()
 
 
 class Spamhaus(Provider):
@@ -44,26 +46,31 @@ class Spamhaus(Provider):
         now = time.time()
         if "data" in _CACHE and now - _CACHE_TS.get("data", 0) < _CACHE_TTL:
             return _CACHE["data"]
-        resp = await client.get(ENDPOINT)
-        if resp.status_code >= 400:
-            raise ValueError(f"{resp.status_code}")
-        cidrs: list[tuple[ipaddress.IPv4Network, str]] = []
-        for line in resp.text.splitlines():
-            line = line.strip()
-            if not line or line.startswith(";"):
-                continue
-            parts = line.split(";")
-            if len(parts) < 2:
-                continue
-            cidr_str = parts[0].strip()
-            sbl = parts[1].strip()
-            try:
-                cidrs.append((ipaddress.IPv4Network(cidr_str, strict=False), sbl))
-            except ValueError:
-                continue
-        _CACHE["data"] = cidrs
-        _CACHE_TS["data"] = now
-        return cidrs
+        async with _LOCK:
+            # re-check inside the lock
+            now = time.time()
+            if "data" in _CACHE and now - _CACHE_TS.get("data", 0) < _CACHE_TTL:
+                return _CACHE["data"]
+            resp = await client.get(ENDPOINT)
+            if resp.status_code >= 400:
+                raise ValueError(f"{resp.status_code}")
+            cidrs: list[tuple[ipaddress.IPv4Network, str]] = []
+            for line in resp.text.splitlines():
+                line = line.strip()
+                if not line or line.startswith(";"):
+                    continue
+                parts = line.split(";")
+                if len(parts) < 2:
+                    continue
+                cidr_str = parts[0].strip()
+                sbl = parts[1].strip()
+                try:
+                    cidrs.append((ipaddress.IPv4Network(cidr_str, strict=False), sbl))
+                except ValueError:
+                    continue
+            _CACHE["data"] = cidrs
+            _CACHE_TS["data"] = now
+            return cidrs
 
 
 def _err(name, msg, start):
