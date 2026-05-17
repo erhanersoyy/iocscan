@@ -67,3 +67,18 @@ def test_cli_invalid_args_exit_3(tmp_home, capsys, monkeypatch):
     err = capsys.readouterr().err
     assert rc == 3
     assert "no iocs" in err.lower()
+
+
+def test_cli_debug_emits_per_provider_logs(tmp_home, mock_provider_responses, capsys):
+    rc = main(["--debug", "8.8.8.8"])
+    err = capsys.readouterr().err
+    # debug log should mention provider names and "lookup" / latency
+    assert "urlhaus" in err.lower()
+    assert "lookup" in err.lower() or "latency" in err.lower() or "ms" in err.lower()
+
+
+def test_cli_without_debug_quiet_stderr(tmp_home, mock_provider_responses, capsys):
+    rc = main(["8.8.8.8"])
+    err = capsys.readouterr().err
+    # without --debug, no per-provider log noise on stderr (warnings only)
+    assert "urlhaus lookup" not in err.lower()
