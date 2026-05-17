@@ -132,3 +132,25 @@ async def test_non_whitelisted_not_overridden():
         result = await scan_ioc("evil.com", IOCType.DOMAIN, providers, client, Config())
     assert result.whitelisted is False
     assert result.verdict == Verdict.MALICIOUS
+
+
+async def test_apply_whitelist_helper_clamps_malicious():
+    """_apply_whitelist clamps M/S verdicts on whitelisted domains."""
+    from iocscan.core.scan import _apply_whitelist
+    v, w = _apply_whitelist("google.com", IOCType.DOMAIN, Verdict.MALICIOUS)
+    assert v == Verdict.CLEAN
+    assert w is True
+
+
+async def test_apply_whitelist_helper_preserves_clean():
+    from iocscan.core.scan import _apply_whitelist
+    v, w = _apply_whitelist("google.com", IOCType.DOMAIN, Verdict.CLEAN)
+    assert v == Verdict.CLEAN
+    assert w is True
+
+
+async def test_apply_whitelist_helper_non_whitelisted():
+    from iocscan.core.scan import _apply_whitelist
+    v, w = _apply_whitelist("evil.com", IOCType.DOMAIN, Verdict.MALICIOUS)
+    assert v == Verdict.MALICIOUS
+    assert w is False

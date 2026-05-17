@@ -13,7 +13,8 @@ from rich.console import Console
 from iocscan.core.cache import Cache
 from iocscan.core.config import load_config
 from iocscan.core.ioc import parse_iocs
-from iocscan.core.scan import scan_ioc
+from iocscan.core.scan import ScanResult, _apply_whitelist, scan_ioc
+from iocscan.core.verdict import aggregate, coverage
 from iocscan.providers import ALL_PROVIDERS
 from iocscan.providers.base import ProviderResult, Verdict
 from iocscan.ui.json_out import render_json
@@ -168,11 +169,10 @@ async def _run_scan(parsed, config, args) -> int:
                 scan = await scan_ioc(ioc, ioc_type, providers_to_query, client, config)
                 if cached:
                     merged_results = list(cached.values()) + scan.provider_results
-                    from iocscan.core.scan import ScanResult
-                    from iocscan.core.verdict import aggregate, coverage
                     v = aggregate(merged_results, min_coverage=config.min_coverage)
                     resp, tot = coverage(merged_results)
-                    scan = ScanResult(ioc, ioc_type, v, merged_results, resp, tot)
+                    final_verdict, whitelisted = _apply_whitelist(ioc, ioc_type, v)
+                    scan = ScanResult(ioc, ioc_type, final_verdict, merged_results, resp, tot, whitelisted=whitelisted)
                 if cache:
                     cache.put(ioc, scan.provider_results)
                 scans.append(scan)

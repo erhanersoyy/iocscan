@@ -13,6 +13,14 @@ from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
 
 log = logging.getLogger(__name__)
 
+
+def _apply_whitelist(ioc: str, ioc_type: IOCType, raw_verdict: Verdict) -> tuple[Verdict, bool]:
+    """Clamp MALICIOUS/SUSPICIOUS to CLEAN for whitelisted domains. Returns (verdict, whitelisted)."""
+    whitelisted = is_whitelisted(ioc, ioc_type)
+    if whitelisted and raw_verdict in (Verdict.MALICIOUS, Verdict.SUSPICIOUS):
+        return Verdict.CLEAN, True
+    return raw_verdict, whitelisted
+
 _RATE_LIMITERS: dict[str, "_RateLimiter"] = {}
 
 
@@ -91,11 +99,7 @@ async def scan_ioc(
             results.append(item)
     raw_verdict = aggregate(results, min_coverage=config.min_coverage)
     responding, total = coverage(results)
-    whitelisted = is_whitelisted(ioc, ioc_type)
-    if whitelisted and raw_verdict in (Verdict.MALICIOUS, Verdict.SUSPICIOUS):
-        final_verdict = Verdict.CLEAN
-    else:
-        final_verdict = raw_verdict
+    final_verdict, whitelisted = _apply_whitelist(ioc, ioc_type, raw_verdict)
     return ScanResult(
         ioc=ioc, ioc_type=ioc_type, verdict=final_verdict,
         provider_results=results, responding=responding, total=total,
