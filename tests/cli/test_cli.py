@@ -82,3 +82,27 @@ def test_cli_without_debug_quiet_stderr(tmp_home, mock_provider_responses, capsy
     err = capsys.readouterr().err
     # without --debug, no per-provider log noise on stderr (warnings only)
     assert "urlhaus lookup" not in err.lower()
+
+
+def test_cli_cache_merge_applies_whitelist(tmp_home, mock_provider_responses, monkeypatch, capsys):
+    """A whitelisted domain whose results are partially cached should still be clamped to CLEAN."""
+    # Pre-populate the cache with a MALICIOUS result for google.com
+    import os
+    from pathlib import Path
+    from iocscan.core.cache import Cache
+    from iocscan.providers.base import ProviderResult, Verdict
+    cache_path = Path(os.path.expanduser("~")) / ".iocscan" / "cache.db"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache = Cache(cache_path, ttl_seconds=3600)
+    cache.put("google.com", [
+        ProviderResult("virustotal", Verdict.MALICIOUS, "10/70", None, None, 10),
+        ProviderResult("otx", Verdict.MALICIOUS, "20 pulses", None, None, 10),
+    ])
+    cache.close()
+
+    rc = main(["--json", "google.com"])
+    import json
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert data["results"][0]["whitelisted"] is True
+    assert data["results"][0]["verdict"] == "clean"  # not malicious despite VT+OTX cached
