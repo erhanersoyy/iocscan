@@ -36,6 +36,20 @@ def test_case_insensitive():
     assert is_whitelisted("Cloudflare.COM", IOCType.DOMAIN) is True
 
 
+@pytest.mark.parametrize("attacker_host", [
+    "evil-bucket.s3.amazonaws.com",
+    "malware.cloudfront.net",
+    "phish.azurewebsites.net",
+    "exfil.azureedge.net",
+    "evil.raw.githubusercontent.com",
+])
+def test_shared_tenant_subdomains_not_whitelisted(attacker_host):
+    """Subdomains of shared-tenant platforms must NOT be whitelisted."""
+    from iocscan.core.whitelist import is_whitelisted
+    assert is_whitelisted(attacker_host, IOCType.DOMAIN) is False, \
+        f"{attacker_host} should NOT be whitelisted"
+
+
 def test_tranco_cache_contributes_to_whitelist(tmp_path, monkeypatch):
     from iocscan.core import tranco, whitelist
     # Write a fake tranco cache that includes "example-not-bundled.com"
