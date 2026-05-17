@@ -54,3 +54,12 @@ def test_malformed_toml_raises_clearly(tmp_home):
     cfg_path.write_text("this is not toml = [[[")
     with pytest.raises(ValueError, match="config.toml"):
         load_config()
+
+
+def test_iocscan_cache_ttl_env_overrides_file(tmp_home, monkeypatch):
+    cfg_path = tmp_home / ".iocscan" / "config.toml"
+    cfg_path.parent.mkdir()
+    cfg_path.write_text("[settings]\ncache_ttl_hours = 24\n")
+    monkeypatch.setenv("IOCSCAN_CACHE_TTL", "6")
+    cfg = load_config()
+    assert cfg.cache_ttl_hours == 6

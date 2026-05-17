@@ -73,6 +73,14 @@ def load_config(cli_keys: dict[str, str] | None = None) -> Config:
     if cli_keys:
         merged.update({k: v for k, v in cli_keys.items() if v})
 
+    ttl_env = os.environ.get("IOCSCAN_CACHE_TTL")
+    if ttl_env:
+        try:
+            settings = dict(settings)
+            settings["cache_ttl_hours"] = int(ttl_env)
+        except ValueError:
+            pass  # ignore malformed env var
+
     return Config(
         keys=merged,
         cache_ttl_hours=int(settings.get("cache_ttl_hours", 24)),
