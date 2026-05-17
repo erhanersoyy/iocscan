@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 
 import httpx
@@ -11,6 +12,7 @@ ENDPOINT = "https://check.torproject.org/torbulkexitlist"
 _CACHE: dict[str, set[str]] = {}
 _CACHE_TS: dict[str, float] = {}
 _CACHE_TTL = 6 * 3600
+_LOCK = asyncio.Lock()
 
 
 class Tor(Provider):
@@ -38,13 +40,18 @@ class Tor(Provider):
         now = time.time()
         if "data" in _CACHE and now - _CACHE_TS.get("data", 0) < _CACHE_TTL:
             return _CACHE["data"]
-        resp = await client.get(ENDPOINT)
-        if resp.status_code >= 400:
-            raise ValueError(f"{resp.status_code}")
-        exits = {line.strip() for line in resp.text.splitlines() if line.strip()}
-        _CACHE["data"] = exits
-        _CACHE_TS["data"] = now
-        return exits
+        async with _LOCK:
+            # re-check inside the lock
+            now = time.time()
+            if "data" in _CACHE and now - _CACHE_TS.get("data", 0) < _CACHE_TTL:
+                return _CACHE["data"]
+            resp = await client.get(ENDPOINT)
+            if resp.status_code >= 400:
+                raise ValueError(f"{resp.status_code}")
+            exits = {line.strip() for line in resp.text.splitlines() if line.strip()}
+            _CACHE["data"] = exits
+            _CACHE_TS["data"] = now
+            return exits
 
 
 def _err(name, msg, start):
