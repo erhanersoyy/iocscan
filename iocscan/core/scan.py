@@ -12,6 +12,43 @@ from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
 _RATE_LIMITERS: dict[str, "_RateLimiter"] = {}
 
 
+class _RateLimiter:
+    def __init__(self, max_rps: float | None):
+        self.min_interval = 1.0 / max_rps if max_rps and max_rps > 0 else 0.0
+        self._lock = asyncio.Lock()
+        self._last_call: float = 0.0
+
+    async def wait(self) -> None:
+        if self.min_interval <= 0:
+            return
+        async with self._lock:
+            loop = asyncio.get_event_loop()
+            now = loop.time()
+            delay = self.min_interval - (now - self._last_call)
+            if delay > 0:
+                await asyncio.sleep(delay)
+            self._last_call = asyncio.get_event_loop().time()
+
+
+def _limiter_for(provider: Provider) -> _RateLimiter:
+    lim = _RATE_LIMITERS.get(provider.name)
+    if lim is None:
+        lim = _RateLimiter(getattr(provider, "max_rps", None))
+        _RATE_LIMITERS[provider.name] = lim
+    return lim
+
+
+async def _throttled_lookup(
+    provider: Provider,
+    ioc: str,
+    ioc_type: IOCType,
+    client: httpx.AsyncClient,
+    config: Config,
+) -> ProviderResult:
+    await _limiter_for(provider).wait()
+    return await provider.lookup(ioc, ioc_type, client, config)
+
+
 @dataclass(frozen=True)
 class ScanResult:
     ioc: str
@@ -30,7 +67,7 @@ async def scan_ioc(
     config: Config,
 ) -> ScanResult:
     applicable = [p for p in providers if ioc_type in p.supports]
-    tasks = [p.lookup(ioc, ioc_type, client, config) for p in applicable]
+    tasks = [_throttled_lookup(p, ioc, ioc_type, client, config) for p in applicable]
     raw = await asyncio.gather(*tasks, return_exceptions=True)
     results: list[ProviderResult] = []
     for provider, item in zip(applicable, raw):
