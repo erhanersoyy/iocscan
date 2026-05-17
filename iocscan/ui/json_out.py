@@ -19,6 +19,7 @@ def render_json(scans: list[ScanResult], min_coverage: int) -> str:
                 "ioc": s.ioc,
                 "type": s.ioc_type.value,
                 "verdict": s.verdict.value,
+                "whitelisted": s.whitelisted,
                 "coverage": {"responding": s.responding, "total": s.total},
                 "providers": {
                     r.provider: {

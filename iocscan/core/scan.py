@@ -8,6 +8,7 @@ import httpx
 
 from iocscan.core.config import Config
 from iocscan.core.verdict import aggregate, coverage
+from iocscan.core.whitelist import is_whitelisted
 from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
 
 log = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ class ScanResult:
     provider_results: list[ProviderResult]
     responding: int
     total: int
+    whitelisted: bool = False
 
 
 async def scan_ioc(
@@ -87,9 +89,15 @@ async def scan_ioc(
             ))
         else:
             results.append(item)
-    final_verdict = aggregate(results, min_coverage=config.min_coverage)
+    raw_verdict = aggregate(results, min_coverage=config.min_coverage)
     responding, total = coverage(results)
+    whitelisted = is_whitelisted(ioc, ioc_type)
+    if whitelisted and raw_verdict in (Verdict.MALICIOUS, Verdict.SUSPICIOUS):
+        final_verdict = Verdict.CLEAN
+    else:
+        final_verdict = raw_verdict
     return ScanResult(
         ioc=ioc, ioc_type=ioc_type, verdict=final_verdict,
         provider_results=results, responding=responding, total=total,
+        whitelisted=whitelisted,
     )
