@@ -31,7 +31,7 @@
 ### Key-less (always active)
 | Provider | IOC Types | Endpoint | Notes |
 |---|---|---|---|
-| URLhaus | domain | `https://urlhaus-api.abuse.ch/v1/host/` | Anonymous POST; malware distribution URLs |
+| URLhaus | IP, domain | `https://urlhaus-api.abuse.ch/v1/host/` | Anonymous POST; malware distribution URLs. Endpoint's `host` parameter accepts both IPs and domains. |
 | ThreatFox | IP, domain | `https://threatfox-api.abuse.ch/api/v1/` | Anonymous POST; C2 indicators |
 | Feodo Tracker | IP | `https://feodotracker.abuse.ch/downloads/ipblocklist.json` | Cached daily; banking trojan C2 |
 | Tor Exit List | IP | `https://check.torproject.org/torbulkexitlist` | Cached daily; informational, not malicious by itself |
