@@ -5,8 +5,10 @@ from iocscan.providers.base import IOCType
 
 
 @pytest.fixture(autouse=True)
-def _clear_tranco_lru():
-    from iocscan.core import whitelist
+def _clean_tranco_cache(tmp_path, monkeypatch):
+    """Force tranco cache to be empty for all tests in this file."""
+    from iocscan.core import tranco, whitelist
+    monkeypatch.setattr(tranco, "CACHE_PATH", tmp_path / "nonexistent-tranco.txt")
     whitelist._tranco_cache.cache_clear()
     yield
     whitelist._tranco_cache.cache_clear()
