@@ -105,3 +105,30 @@ async def test_scan_ioc_isolates_provider_exceptions():
     assert "boom" in (by_name["crashy"].error or "") or "RuntimeError" in (by_name["crashy"].error or "")
     assert by_name["a"].verdict == Verdict.CLEAN
     assert result.verdict == Verdict.CLEAN  # 3 clean responders, majority
+
+
+async def test_whitelist_overrides_malicious_verdict():
+    """A whitelisted domain that providers flag malicious gets clamped to CLEAN."""
+    providers = [
+        FakeProvider("a", Verdict.MALICIOUS),
+        FakeProvider("b", Verdict.MALICIOUS),
+        FakeProvider("c", Verdict.MALICIOUS),
+        FakeProvider("d", Verdict.CLEAN),
+        FakeProvider("e", Verdict.CLEAN),
+    ]
+    async with httpx.AsyncClient() as client:
+        result = await scan_ioc("cloudflare.com", IOCType.DOMAIN, providers, client, Config())
+    assert result.whitelisted is True
+    assert result.verdict == Verdict.CLEAN
+
+
+async def test_non_whitelisted_not_overridden():
+    providers = [
+        FakeProvider("a", Verdict.MALICIOUS),
+        FakeProvider("b", Verdict.MALICIOUS),
+        FakeProvider("c", Verdict.MALICIOUS),
+    ]
+    async with httpx.AsyncClient() as client:
+        result = await scan_ioc("evil.com", IOCType.DOMAIN, providers, client, Config())
+    assert result.whitelisted is False
+    assert result.verdict == Verdict.MALICIOUS

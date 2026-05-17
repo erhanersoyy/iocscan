@@ -36,6 +36,8 @@ def _render_wide(scans: list[ScanResult], console: Console) -> None:
         t.add_column(name)
     for s in scans:
         verdict_text = f"[{VERDICT_STYLES[s.verdict]}]{s.verdict.value}[/] ({s.responding}/{s.total})"
+        if s.whitelisted:
+            verdict_text += " [dim](whitelisted)[/]"
         row = [s.ioc, s.ioc_type.value, verdict_text]
         by_name = {r.provider: r for r in s.provider_results}
         for name in PROVIDER_ORDER:
@@ -59,6 +61,8 @@ def _render_compact(scans: list[ScanResult], console: Console) -> None:
     t.add_column("Details")
     for s in scans:
         verdict_text = f"[{VERDICT_STYLES[s.verdict]}]{s.verdict.value}[/] ({s.responding}/{s.total})"
+        if s.whitelisted:
+            verdict_text += " [dim](whitelisted)[/]"
         details = []
         for r in s.provider_results:
             if r.verdict == Verdict.MALICIOUS or r.verdict == Verdict.SUSPICIOUS:
