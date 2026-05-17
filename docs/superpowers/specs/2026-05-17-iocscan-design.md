@@ -6,14 +6,14 @@
 
 ## 1. Purpose
 
-`iocscan` is a Python CLI tool that takes IP addresses and domain names and returns a consolidated `malicious / suspicious / clean / unknown` verdict by querying nine open-source threat intelligence providers in parallel. It runs without configuration on first install (three no-key providers always work) and gains coverage as the user adds free-tier API keys.
+`iocscan` is a Python CLI tool that takes IP addresses and domain names and returns a consolidated `malicious / suspicious / clean / unknown` verdict by querying nine open-source threat intelligence providers in parallel. It runs without configuration on first install (four no-key providers always work) and gains coverage as the user adds free-tier API keys.
 
 ## 2. Goals & Non-Goals
 
 **Goals**
 - Single command produces a colored terminal table with per-source results and a final verdict.
-- Works with zero configuration: three no-key providers are queried by default.
-- Free-tier API keys (abuse.ch, VirusTotal, AbuseIPDB, OTX, GreyNoise) are optional and unlock five more providers.
+- Works with zero configuration: four no-key providers are queried by default.
+- Free-tier API keys (abuse.ch, VirusTotal, AbuseIPDB, OTX) are optional and unlock five more providers. GreyNoise also accepts an optional key for a higher rate limit.
 - Honest verdicts: never claim "clean" when too few providers responded.
 - Machine-readable output (`--json`) for SOAR / SIEM integration.
 - Fast: 9 providers complete in 3–5 seconds via asyncio.
@@ -34,6 +34,7 @@
 | Feodo Tracker | IP | `https://feodotracker.abuse.ch/downloads/ipblocklist.json` | Cached daily; banking trojan C2 |
 | Tor Exit List | IP | `https://check.torproject.org/torbulkexitlist` | Cached daily; informational, not malicious by itself |
 | Spamhaus DROP | IP | `https://www.spamhaus.org/drop/drop.txt` | Cached daily; hijacked netblocks |
+| GreyNoise Community | IP | `https://api.greynoise.io/v3/community/{ip}` | Optional API key (`IOCSCAN_GREYNOISE_KEY`) for higher rate limit; anonymous use is rate-limited |
 
 ### Free-tier (require API key, optional)
 | Provider | IOC Types | Free Limit | Env Var | Notes |
@@ -43,7 +44,6 @@
 | VirusTotal | IP, domain | 500/day, 4/min | `IOCSCAN_VT_KEY` | |
 | AbuseIPDB | IP | 1,000/day | `IOCSCAN_ABUSEIPDB_KEY` | |
 | AlienVault OTX | IP, domain | ~10,000/hour | `IOCSCAN_OTX_KEY` | |
-| GreyNoise Community | IP | 50/week | `IOCSCAN_GREYNOISE_KEY` | |
 
 Domain-only IOCs skip IP-only providers, and vice versa — `Provider.supports` declares each provider's capability set.
 

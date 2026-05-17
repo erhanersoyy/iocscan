@@ -9,10 +9,28 @@ def _c(h):
     return httpx.AsyncClient(transport=httpx.MockTransport(h), timeout=5.0)
 
 
-async def test_no_key_error():
-    async with _c(lambda req: httpx.Response(200, content="{}")) as c:
-        r = await GreyNoise().lookup("1.2.3.4", IOCType.IP, c, Config())
-    assert r.verdict == Verdict.ERROR
+async def test_no_key_still_works_keyless():
+    body = '{"ip": "8.8.8.8", "classification": "benign", "noise": false, "name": "Google"}'
+    captured = {}
+    def h(req):
+        captured["had_key"] = "key" in req.headers
+        return httpx.Response(200, content=body)
+    async with _c(h) as c:
+        r = await GreyNoise().lookup("8.8.8.8", IOCType.IP, c, Config())
+    assert r.verdict == Verdict.CLEAN
+    assert captured["had_key"] is False  # no key header when not configured
+
+
+async def test_key_header_sent_when_configured():
+    body = '{"ip": "8.8.8.8", "classification": "benign", "noise": false, "name": "Google"}'
+    captured = {}
+    def h(req):
+        captured["key_value"] = req.headers.get("key")
+        return httpx.Response(200, content=body)
+    async with _c(h) as c:
+        cfg = Config(keys={"greynoise": "MYKEY"})
+        await GreyNoise().lookup("8.8.8.8", IOCType.IP, c, cfg)
+    assert captured["key_value"] == "MYKEY"
 
 
 async def test_domain_unsupported():
