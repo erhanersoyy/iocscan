@@ -1,0 +1,2 @@
+{"query_status": "ok", "urlhaus_reference": "https://urlhaus.abuse.ch/host/evil.com/",
+ "url_count": "12", "blacklists": {"surbl": "listed", "spamhaus_dbl": "abused_legit_malware"}}
