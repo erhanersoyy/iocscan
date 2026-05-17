@@ -6,14 +6,14 @@
 
 ## 1. Purpose
 
-`iocscan` is a Python CLI tool that takes IP addresses and domain names and returns a consolidated `malicious / suspicious / clean / unknown` verdict by querying nine open-source threat intelligence providers in parallel. It runs without configuration on first install (five no-key providers always work) and gains coverage as the user adds free-tier API keys.
+`iocscan` is a Python CLI tool that takes IP addresses and domain names and returns a consolidated `malicious / suspicious / clean / unknown` verdict by querying nine open-source threat intelligence providers in parallel. It runs without configuration on first install (four no-key providers always work) and gains coverage as the user adds free-tier API keys.
 
 ## 2. Goals & Non-Goals
 
 **Goals**
 - Single command produces a colored terminal table with per-source results and a final verdict.
-- Works with zero configuration: five no-key providers are queried by default.
-- Free-tier API keys (VirusTotal, AbuseIPDB, OTX, GreyNoise) are optional and unlock four more providers.
+- Works with zero configuration: four no-key providers are queried by default.
+- Free-tier API keys (abuse.ch, VirusTotal, AbuseIPDB, OTX) are optional and unlock five more providers. GreyNoise also accepts an optional key for a higher rate limit.
 - Honest verdicts: never claim "clean" when too few providers responded.
 - Machine-readable output (`--json`) for SOAR / SIEM integration.
 - Fast: 9 providers complete in 3–5 seconds via asyncio.
@@ -31,19 +31,19 @@
 ### Key-less (always active)
 | Provider | IOC Types | Endpoint | Notes |
 |---|---|---|---|
-| URLhaus | domain | `https://urlhaus-api.abuse.ch/v1/host/` | Anonymous POST; malware distribution URLs |
-| ThreatFox | IP, domain | `https://threatfox-api.abuse.ch/api/v1/` | Anonymous POST; C2 indicators |
 | Feodo Tracker | IP | `https://feodotracker.abuse.ch/downloads/ipblocklist.json` | Cached daily; banking trojan C2 |
 | Tor Exit List | IP | `https://check.torproject.org/torbulkexitlist` | Cached daily; informational, not malicious by itself |
 | Spamhaus DROP | IP | `https://www.spamhaus.org/drop/drop.txt` | Cached daily; hijacked netblocks |
+| GreyNoise Community | IP | `https://api.greynoise.io/v3/community/{ip}` | Optional API key (`IOCSCAN_GREYNOISE_KEY`) for higher rate limit; anonymous use is rate-limited |
 
 ### Free-tier (require API key, optional)
-| Provider | IOC Types | Free Limit | Env Var |
-|---|---|---|---|
-| VirusTotal | IP, domain | 500/day, 4/min | `IOCSCAN_VT_KEY` |
-| AbuseIPDB | IP | 1,000/day | `IOCSCAN_ABUSEIPDB_KEY` |
-| AlienVault OTX | IP, domain | ~10,000/hour | `IOCSCAN_OTX_KEY` |
-| GreyNoise Community | IP | 50/week | `IOCSCAN_GREYNOISE_KEY` |
+| Provider | IOC Types | Free Limit | Env Var | Notes |
+|---|---|---|---|---|
+| URLhaus | IP, domain | unlimited | `IOCSCAN_ABUSECH_KEY` | Shared key with ThreatFox; free signup at auth.abuse.ch |
+| ThreatFox | IP, domain | unlimited | `IOCSCAN_ABUSECH_KEY` | Shared key with URLhaus; free signup at auth.abuse.ch |
+| VirusTotal | IP, domain | 500/day, 4/min | `IOCSCAN_VT_KEY` | |
+| AbuseIPDB | IP | 1,000/day | `IOCSCAN_ABUSEIPDB_KEY` | |
+| AlienVault OTX | IP, domain | ~10,000/hour | `IOCSCAN_OTX_KEY` | |
 
 Domain-only IOCs skip IP-only providers, and vice versa — `Provider.supports` declares each provider's capability set.
 
@@ -68,7 +68,7 @@ iocscan/
 │   │   └── greynoise.py
 │   ├── core/
 │   │   ├── ioc.py            # IOC type detection, defang normalization
-│   │   ├── verdict.py        # aggregate() — majority vote with min coverage
+│   │   ├── verdict.py        # aggregate() — Tier-1 authoritative + Tier-2 weighted voting
 │   │   ├── cache.py          # SQLite TTL cache
 │   │   └── config.py         # env var + ~/.iocscan/config.toml merge
 │   └── ui/
@@ -132,21 +132,53 @@ class Provider(ABC):
 
 ## 6. Verdict Aggregation
 
-```python
-MIN_COVERAGE = 3  # minimum responding providers for a confident verdict
+Aggregation is two-tiered: authoritative blocklists take unconditional precedence, then remaining providers vote by weight.
 
-def aggregate(results: list[ProviderResult]) -> Verdict:
-    responding = [r for r in results if r.verdict not in (Verdict.ERROR, Verdict.UNKNOWN)]
-    if len(responding) < MIN_COVERAGE:
+```python
+MIN_COVERAGE_DEFAULT = 3
+
+# Tier-1: authoritative blocklists — one MALICIOUS hit = final MALICIOUS
+AUTHORITATIVE = {"spamhaus", "feodo"}
+
+# Tier-2 weights (multi-engine / multi-source providers count more)
+WEIGHTS = {
+    "virustotal": 2,
+    "otx": 2,
+    # others default to 1
+}
+
+
+def aggregate(
+    results: list[ProviderResult], *, min_coverage: int = MIN_COVERAGE_DEFAULT
+) -> Verdict:
+    responding = [
+        r for r in results
+        if r.verdict not in (Verdict.ERROR, Verdict.UNKNOWN)
+    ]
+    if len(responding) < min_coverage:
         return Verdict.UNKNOWN
-    malicious  = sum(1 for r in responding if r.verdict == Verdict.MALICIOUS)
-    suspicious = sum(1 for r in responding if r.verdict == Verdict.SUSPICIOUS)
-    if malicious > len(responding) / 2:
+
+    # Tier 1: authoritative blocklist hit
+    for r in responding:
+        if r.provider in AUTHORITATIVE and r.verdict == Verdict.MALICIOUS:
+            return Verdict.MALICIOUS
+
+    # Tier 2: weighted voting at >=30% threshold
+    mal_w  = sum(WEIGHTS.get(r.provider, 1) for r in responding if r.verdict == Verdict.MALICIOUS)
+    susp_w = sum(WEIGHTS.get(r.provider, 1) for r in responding if r.verdict == Verdict.SUSPICIOUS)
+    total_w = sum(WEIGHTS.get(r.provider, 1) for r in responding)
+
+    # Integer-safe >=30% check: mal_w * 10 >= total_w * 3
+    if mal_w * 10 >= total_w * 3:
         return Verdict.MALICIOUS
-    if (malicious + suspicious) > len(responding) / 2:
+    if (mal_w + susp_w) * 10 >= total_w * 3:
         return Verdict.SUSPICIOUS
     return Verdict.CLEAN
 ```
+
+**Tier-1 (authoritative):** A single MALICIOUS result from Spamhaus DROP or Feodo Tracker immediately returns `Verdict.MALICIOUS`, regardless of what other providers say. These feeds carry near-zero false-positive rates (hijacked netblocks, banking-trojan C2) and are treated as ground truth.
+
+**Tier-2 (weighted voting):** VirusTotal and OTX each carry weight 2 (multi-engine / multi-source aggregators); all other providers default to weight 1. A verdict fires at ≥30% of total weighted votes — lower than a strict majority, intentionally biased toward sensitivity for a blue-team tool.
 
 `UNKNOWN` now carries two meanings:
 1. Providers were queried but had no data on this IOC.
@@ -191,7 +223,7 @@ iocscan --debug 1.2.3.4                   # verbose stderr (HTTP, stack traces)
 iocscan --narrow 1.2.3.4                  # force compact table layout
 
 # Ad-hoc key override (highest priority)
-iocscan --vt-key XXX --abuseipdb-key YYY 1.2.3.4
+iocscan --vt-key XXX --abusech-key YYY --abuseipdb-key ZZZ 1.2.3.4
 
 # Management
 iocscan config set virustotal KEY         # writes ~/.iocscan/config.toml (chmod 0600)
@@ -200,6 +232,8 @@ iocscan config path                       # print config file location
 iocscan cache clear                       # delete cache.db
 iocscan cache stats                       # rows, size, oldest entry
 iocscan providers                         # list providers + status (active / missing key)
+iocscan whitelist update                  # fetch latest Tranco top-1K (~50 KB)
+iocscan whitelist stats                   # show cache age and domain count
 ```
 
 ### Exit Codes
@@ -296,6 +330,52 @@ min_coverage    = 3
 }
 ```
 
+## 12.5 Whitelist Override
+
+High-traffic legitimate domains appear in threat-intelligence feeds as collateral noise (e.g., a malware sample that phone-homes through Cloudflare or pulls payloads from a GitHub raw URL). The whitelist catches these false positives before results reach the user.
+
+### Domain sources
+
+Two sources are combined at runtime:
+
+| Source | Size | Loaded |
+|---|---|---|
+| Bundled `WHITELIST_DOMAINS` | ~40 entries | Always; baked into the package |
+| Tranco top-1K cache | up to 1,000 entries | Only if `~/.iocscan/tranco-1k.txt` exists |
+
+The bundled set covers critical-infrastructure domains (Google, Microsoft, Apple, Amazon, major CDNs, public DNS). The Tranco cache supplements it with the top-1,000 most popular domains from Tranco's weekly ranking. Neither set is fetched automatically; run `iocscan whitelist update` to populate or refresh the Tranco cache (~50 KB download).
+
+### Override mechanics
+
+The whitelist override applies **after** verdict aggregation:
+
+```
+raw_verdict = aggregate(provider_results)   # Tier-1 + Tier-2 (§6)
+whitelisted = is_whitelisted(ioc, ioc_type) # exact or subdomain match
+if whitelisted and raw_verdict in (MALICIOUS, SUSPICIOUS):
+    final_verdict = CLEAN
+```
+
+Only `MALICIOUS` and `SUSPICIOUS` are overridden; `CLEAN` and `UNKNOWN` pass through unchanged.
+
+### `ScanResult.whitelisted`
+
+`ScanResult` carries a `whitelisted: bool` field. It is `True` whenever the IOC matched the whitelist, even if the raw verdict was already `CLEAN` (useful for auditing). Both output formats expose it:
+
+- **Table:** verdict cell annotated `clean (whitelisted)` in gray.
+- **JSON:** `"whitelisted": true` at the top-level result object.
+
+### Shared-tenant platform exclusion
+
+Subdomain wildcarding is intentionally disabled for platforms where an attacker can register their own subdomain alongside legitimate tenants. The following are **not** wildcarded (only exact matches apply):
+
+- `amazonaws.com` (AWS S3, Lambda URLs, etc.)
+- `github.com` / `githubusercontent.com`
+- `azurewebsites.net` (Azure App Service)
+- `cloudfront.net` (AWS CloudFront)
+
+This prevents a malicious `evil-payload.s3.amazonaws.com` from inheriting the clean reputation of `amazonaws.com`.
+
 ## 13. Concurrency & Performance
 
 - Single shared `httpx.AsyncClient` (HTTP/2 enabled, connection pool of 20).
@@ -318,7 +398,7 @@ min_coverage    = 3
 - Real network is never hit in unit tests.
 
 **Integration smoke tests (`@pytest.mark.network`):**
-- Only key-less providers (URLhaus, ThreatFox, Feodo, Tor, Spamhaus).
+- Only key-less providers (Feodo, Tor, Spamhaus, GreyNoise — URLhaus and ThreatFox now require an abuse.ch key).
 - Run weekly in CI, skipped by default locally.
 
 **CLI snapshot tests:**
