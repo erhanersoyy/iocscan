@@ -141,46 +141,49 @@ def main(argv: list[str] | None = None) -> int:
 async def _run_scan(parsed, config, args) -> int:
     cache_path = Path(os.path.expanduser("~")) / ".iocscan" / "cache.db"
     cache = None if args.no_cache else Cache(cache_path, ttl_seconds=config.cache_ttl_hours * 3600)
+    try:
+        scans = []
+        async with _make_client(config.timeout_seconds) as client:
+            for ioc, ioc_type in parsed:
+                cached = cache.get(ioc) if cache else {}
+                providers_to_query = [p for p in ALL_PROVIDERS if p.name not in cached]
+                scan = await scan_ioc(ioc, ioc_type, providers_to_query, client, config)
+                if cached:
+                    merged_results = list(cached.values()) + scan.provider_results
+                    from iocscan.core.scan import ScanResult
+                    from iocscan.core.verdict import aggregate, coverage
+                    v = aggregate(merged_results, min_coverage=config.min_coverage)
+                    resp, tot = coverage(merged_results)
+                    scan = ScanResult(ioc, ioc_type, v, merged_results, resp, tot)
+                if cache:
+                    cache.put(ioc, scan.provider_results)
+                scans.append(scan)
 
-    scans = []
-    async with _make_client(config.timeout_seconds) as client:
-        for ioc, ioc_type in parsed:
-            cached = cache.get(ioc) if cache else {}
-            providers_to_query = [p for p in ALL_PROVIDERS if p.name not in cached]
-            scan = await scan_ioc(ioc, ioc_type, providers_to_query, client, config)
-            if cached:
-                merged_results = list(cached.values()) + scan.provider_results
-                from iocscan.core.scan import ScanResult
-                from iocscan.core.verdict import aggregate, coverage
-                v = aggregate(merged_results, min_coverage=config.min_coverage)
-                resp, tot = coverage(merged_results)
-                scan = ScanResult(ioc, ioc_type, v, merged_results, resp, tot)
-            if cache:
-                cache.put(ioc, scan.provider_results)
-            scans.append(scan)
+        if args.json:
+            print(render_json(scans, min_coverage=config.min_coverage))
+        else:
+            render_table(scans, Console(), narrow=args.narrow)
 
-    if args.json:
-        print(render_json(scans, min_coverage=config.min_coverage))
-    else:
-        render_table(scans, Console(), narrow=args.narrow)
+        has_malicious = any(s.verdict == Verdict.MALICIOUS for s in scans)
+        has_suspicious = any(s.verdict == Verdict.SUSPICIOUS for s in scans)
+        all_unknown = all(s.verdict == Verdict.UNKNOWN for s in scans)
+        all_errors = all(
+            all(r.verdict == Verdict.ERROR for r in s.provider_results)
+            for s in scans
+        )
 
-    has_malicious = any(s.verdict == Verdict.MALICIOUS for s in scans)
-    has_suspicious = any(s.verdict == Verdict.SUSPICIOUS for s in scans)
-    all_unknown = all(s.verdict == Verdict.UNKNOWN for s in scans)
-    all_errors = all(
-        all(r.verdict == Verdict.ERROR for r in s.provider_results)
-        for s in scans
-    )
-
-    if all_errors:
-        return 4
-    if has_malicious:
-        return 1
-    if has_suspicious:
-        return 2
-    if all_unknown:
-        return 5
-    return 0
+        if all_errors:
+            return 4
+        if has_malicious:
+            return 1
+        if has_suspicious:
+            return 2
+        if all_unknown:
+            return 5
+        return 0
+    finally:
+        if cache is not None:
+            cache.close()
 
 
 def _cmd_config(args, config) -> int:
@@ -196,21 +199,26 @@ def _cmd_config(args, config) -> int:
     if args.config_cmd == "path":
         print(config.path)
         return 0
+    print("usage: iocscan config {set <provider> <value>|show|path}", file=sys.stderr)
     return 3
 
 
 def _cmd_cache(args, config) -> int:
     cache_path = Path(os.path.expanduser("~")) / ".iocscan" / "cache.db"
     cache = Cache(cache_path, ttl_seconds=config.cache_ttl_hours * 3600)
-    if args.cache_cmd == "clear":
-        cache.clear()
-        print("cache cleared")
-        return 0
-    if args.cache_cmd == "stats":
-        s = cache.stats()
-        print(f"path: {s['path']}\nrows: {s['rows']}\niocs: {s['iocs']}")
-        return 0
-    return 3
+    try:
+        if args.cache_cmd == "clear":
+            cache.clear()
+            print("cache cleared")
+            return 0
+        if args.cache_cmd == "stats":
+            s = cache.stats()
+            print(f"path: {s['path']}\nrows: {s['rows']}\niocs: {s['iocs']}")
+            return 0
+        print("usage: iocscan cache {clear|stats}", file=sys.stderr)
+        return 3
+    finally:
+        cache.close()
 
 
 def _cmd_providers(config) -> int:
