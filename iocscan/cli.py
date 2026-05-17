@@ -40,7 +40,7 @@ def _read_inputs(args) -> list[str]:
     return items
 
 
-_SUBCOMMANDS = {"config", "cache", "providers"}
+_SUBCOMMANDS = {"config", "cache", "providers", "whitelist"}
 
 
 def _build_scan_parser() -> argparse.ArgumentParser:
@@ -79,6 +79,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     cache_sub.add_parser("stats")
 
     sub.add_parser("providers", help="list providers and their status")
+
+    wl_p = sub.add_parser("whitelist", help="manage Tranco top-1K whitelist cache")
+    wl_sub = wl_p.add_subparsers(dest="wl_cmd")
+    wl_sub.add_parser("update", help="fetch latest Tranco top-1K and cache it")
+    wl_sub.add_parser("stats", help="show whitelist cache status")
     return p
 
 
@@ -133,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_cache(args, config)
     if args.cmd == "providers":
         return _cmd_providers(config)
+    if args.cmd == "whitelist":
+        return _cmd_whitelist(args)
 
     raw = _read_inputs(args)
     if not raw:
@@ -239,6 +246,30 @@ def _cmd_cache(args, config) -> int:
         return 3
     finally:
         cache.close()
+
+
+def _cmd_whitelist(args) -> int:
+    from iocscan.core import tranco
+    if args.wl_cmd == "update":
+        try:
+            n = tranco.fetch_and_save()
+        except (httpx.HTTPError, ValueError) as e:
+            print(f"whitelist update failed: {e}", file=sys.stderr)
+            return 4
+        print(f"saved {n} domains to {tranco.CACHE_PATH}")
+        return 0
+    if args.wl_cmd == "stats":
+        age = tranco.cache_age_days()
+        cached = tranco.load_cache()
+        if age is None:
+            print("tranco cache: not present (run 'iocscan whitelist update')")
+        else:
+            print(f"tranco cache: {len(cached)} domains, {age} days old at {tranco.CACHE_PATH}")
+        from iocscan.core.whitelist import WHITELIST_DOMAINS
+        print(f"bundled whitelist: {len(WHITELIST_DOMAINS)} domains")
+        return 0
+    print("usage: iocscan whitelist {update|stats}", file=sys.stderr)
+    return 3
 
 
 def _cmd_providers(config) -> int:
