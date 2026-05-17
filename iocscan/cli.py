@@ -52,6 +52,7 @@ def _build_scan_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-cache", action="store_true", help="bypass cache for this run")
     p.add_argument("--debug", action="store_true", help="verbose stderr (HTTP, errors)")
     p.add_argument("--narrow", action="store_true", help="force compact table layout")
+    p.add_argument("--abusech-key")
     p.add_argument("--vt-key")
     p.add_argument("--abuseipdb-key")
     p.add_argument("--otx-key")
@@ -96,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
         args.no_cache = False
         args.debug = False
         args.narrow = False
+        args.abusech_key = None
         args.vt_key = None
         args.abuseipdb_key = None
         args.otx_key = None
@@ -113,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     cli_keys = {
+        "abusech": args.abusech_key,
         "virustotal": args.vt_key,
         "abuseipdb": args.abuseipdb_key,
         "otx": args.otx_key,

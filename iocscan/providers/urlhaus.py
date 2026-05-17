@@ -18,13 +18,19 @@ class URLhaus(Provider):
 
     async def lookup(self, ioc: str, ioc_type: IOCType, client: httpx.AsyncClient, config: Config) -> ProviderResult:
         start = time.perf_counter()
+        headers = {}
+        abusech_key = config.key_for("abusech")
+        if abusech_key:
+            headers["Auth-Key"] = abusech_key
         try:
-            resp = await client.post(ENDPOINT, data={"host": ioc})
+            resp = await client.post(ENDPOINT, data={"host": ioc}, headers=headers)
         except httpx.HTTPError as e:
             return self._err(f"network: {e.__class__.__name__}", start)
         latency = int((time.perf_counter() - start) * 1000)
         if resp.status_code == 429:
             return ProviderResult(self.name, Verdict.ERROR, "", None, "429 rate limit", latency)
+        if resp.status_code in (401, 403):
+            return ProviderResult(self.name, Verdict.ERROR, "", None, "auth failed (Auth-Key required)", latency)
         if resp.status_code >= 500:
             return ProviderResult(self.name, Verdict.ERROR, "", None, f"{resp.status_code} server", latency)
         if resp.status_code >= 400:

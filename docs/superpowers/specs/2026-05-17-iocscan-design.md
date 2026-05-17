@@ -12,8 +12,8 @@
 
 **Goals**
 - Single command produces a colored terminal table with per-source results and a final verdict.
-- Works with zero configuration: five no-key providers are queried by default.
-- Free-tier API keys (VirusTotal, AbuseIPDB, OTX, GreyNoise) are optional and unlock four more providers.
+- Works with zero configuration: three no-key providers are queried by default.
+- Free-tier API keys (abuse.ch, VirusTotal, AbuseIPDB, OTX, GreyNoise) are optional and unlock five more providers.
 - Honest verdicts: never claim "clean" when too few providers responded.
 - Machine-readable output (`--json`) for SOAR / SIEM integration.
 - Fast: 9 providers complete in 3–5 seconds via asyncio.
@@ -31,19 +31,19 @@
 ### Key-less (always active)
 | Provider | IOC Types | Endpoint | Notes |
 |---|---|---|---|
-| URLhaus | IP, domain | `https://urlhaus-api.abuse.ch/v1/host/` | Anonymous POST; malware distribution URLs. Endpoint's `host` parameter accepts both IPs and domains. |
-| ThreatFox | IP, domain | `https://threatfox-api.abuse.ch/api/v1/` | Anonymous POST; C2 indicators |
 | Feodo Tracker | IP | `https://feodotracker.abuse.ch/downloads/ipblocklist.json` | Cached daily; banking trojan C2 |
 | Tor Exit List | IP | `https://check.torproject.org/torbulkexitlist` | Cached daily; informational, not malicious by itself |
 | Spamhaus DROP | IP | `https://www.spamhaus.org/drop/drop.txt` | Cached daily; hijacked netblocks |
 
 ### Free-tier (require API key, optional)
-| Provider | IOC Types | Free Limit | Env Var |
-|---|---|---|---|
-| VirusTotal | IP, domain | 500/day, 4/min | `IOCSCAN_VT_KEY` |
-| AbuseIPDB | IP | 1,000/day | `IOCSCAN_ABUSEIPDB_KEY` |
-| AlienVault OTX | IP, domain | ~10,000/hour | `IOCSCAN_OTX_KEY` |
-| GreyNoise Community | IP | 50/week | `IOCSCAN_GREYNOISE_KEY` |
+| Provider | IOC Types | Free Limit | Env Var | Notes |
+|---|---|---|---|---|
+| URLhaus | IP, domain | unlimited | `IOCSCAN_ABUSECH_KEY` | Shared key with ThreatFox; free signup at auth.abuse.ch |
+| ThreatFox | IP, domain | unlimited | `IOCSCAN_ABUSECH_KEY` | Shared key with URLhaus; free signup at auth.abuse.ch |
+| VirusTotal | IP, domain | 500/day, 4/min | `IOCSCAN_VT_KEY` | |
+| AbuseIPDB | IP | 1,000/day | `IOCSCAN_ABUSEIPDB_KEY` | |
+| AlienVault OTX | IP, domain | ~10,000/hour | `IOCSCAN_OTX_KEY` | |
+| GreyNoise Community | IP | 50/week | `IOCSCAN_GREYNOISE_KEY` | |
 
 Domain-only IOCs skip IP-only providers, and vice versa — `Provider.supports` declares each provider's capability set.
 
