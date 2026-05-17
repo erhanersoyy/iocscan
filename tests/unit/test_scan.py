@@ -38,7 +38,7 @@ async def test_scan_ioc_runs_all_providers_in_parallel():
         result = await scan_ioc("1.2.3.4", IOCType.IP, providers, client, Config())
     assert isinstance(result, ScanResult)
     assert result.ioc == "1.2.3.4"
-    assert result.verdict == Verdict.CLEAN  # 2 mal / 5 — not majority
+    assert result.verdict == Verdict.MALICIOUS  # 2 mal / 5 = 40% >= 30% threshold
     assert len(result.provider_results) == 5
 
 
