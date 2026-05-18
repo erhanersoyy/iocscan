@@ -172,3 +172,42 @@ def test_table_escapes_ioc_brackets():
     assert "evil[bracket].com" in out_compact, (
         "IOC bracket characters were not preserved as literals in compact layout"
     )
+
+
+# --- Auto-narrow threshold + --wide override (PR for "narrow vermedim narrow geldi") ---
+
+def _render_with_width(scans, console_width, narrow=False, wide=False):
+    buf = StringIO()
+    console = Console(file=buf, width=console_width, force_terminal=False, color_system=None)
+    render_table(scans, console, narrow=narrow, wide=wide)
+    return buf.getvalue()
+
+
+def test_auto_narrow_kicks_in_below_threshold():
+    """Terminals narrower than 100 columns auto-render compact."""
+    scan = _scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)
+    out = _render_with_width([scan], console_width=99)
+    # Compact mode emits a 3-column header (IOC / Verdict / Details)
+    assert "Details" in out
+
+
+def test_auto_wide_above_threshold():
+    """Terminals at or above 100 columns auto-render wide."""
+    scan = _scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)
+    out = _render_with_width([scan], console_width=120)
+    # Wide mode shows every provider column header
+    assert "urlhaus" in out
+    assert "greynoise" in out
+    # No "Details" column header in wide mode
+    assert "Details" not in out
+
+
+def test_wide_flag_overrides_narrow_terminal():
+    """--wide forces the wide layout even when terminal is narrow."""
+    scan = _scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)
+    out = _render_with_width([scan], console_width=60, wide=True)
+    # Wide mode has many columns and no "Details" column;
+    # provider names may be Rich-truncated at this width.
+    assert "Details" not in out
+    # 11 columns (IOC + Verdict + 9 providers) → 10 "┳" joins in the header rule
+    assert out.count("┳") >= 10
