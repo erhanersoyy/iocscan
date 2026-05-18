@@ -5,7 +5,7 @@ import time
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
+from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
 ENDPOINT = "https://api.greynoise.io/v3/community"
 
@@ -48,7 +48,3 @@ class GreyNoise(Provider):
         if classification == "benign":
             return ProviderResult(self.name, Verdict.CLEAN, f"benign: {name}".strip(": "), data, None, latency)
         return ProviderResult(self.name, Verdict.UNKNOWN, classification, data, None, latency)
-
-
-def _err(name, msg, start):
-    return ProviderResult(name, Verdict.ERROR, "", None, msg, int((time.perf_counter() - start) * 1000))

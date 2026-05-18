@@ -6,7 +6,7 @@ import time
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
+from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
 ENDPOINT = "https://threatfox-api.abuse.ch/api/v1/"
 
@@ -44,8 +44,3 @@ class ThreatFox(Provider):
             malware = entry.get("malware", "unknown")
             return ProviderResult(self.name, Verdict.MALICIOUS, malware, data, None, latency)
         return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency)
-
-
-def _err(name: str, msg: str, start: float) -> ProviderResult:
-    latency = int((time.perf_counter() - start) * 1000)
-    return ProviderResult(name, Verdict.ERROR, "", None, msg, latency)
