@@ -22,11 +22,23 @@ Four providers work out of the box (no API key). Five more activate when you add
 
 ## Install
 
+Requires Python 3.11 or newer.
+
+### Option A — pre-built wheel from GitHub Releases
+
+Grab the latest wheel from the [Releases page](https://github.com/erhanersoyy/iocscan/releases/latest) and install it with `pipx` (isolated) or `pip` (current env):
+
 ```bash
-pipx install iocscan
+# Replace VERSION with the latest release tag, e.g. v0.1.0
+curl -L -o iocscan.whl \
+  https://github.com/erhanersoyy/iocscan/releases/download/VERSION/iocscan-VERSION-py3-none-any.whl
+
+pipx install ./iocscan.whl     # recommended — isolated install with its own venv
+# or
+pip install ./iocscan.whl
 ```
 
-Or from source:
+### Option B — from source
 
 ```bash
 git clone https://github.com/erhanersoyy/iocscan.git
@@ -34,8 +46,6 @@ cd iocscan
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
-
-Requires Python 3.11 or newer.
 
 ---
 
