@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 
 import httpx
@@ -16,6 +17,9 @@ _CACHE_TTL = 6 * 3600  # in-process cache 6h
 # first await rather than at construction, so this works under any loop
 # the CLI happens to spawn. Do NOT downgrade Python to 3.9.
 _LOCK = asyncio.Lock()
+MAX_BODY = 50 * 1024 * 1024  # 50 MB — guard against OOM on hostile/MitM endpoints
+_FAILURE_TTL = 30  # seconds before retrying after a fetch failure
+_FAILED_UNTIL: dict[str, float] = {"ts": 0.0}
 
 
 class Feodo(Provider):
@@ -45,19 +49,36 @@ class Feodo(Provider):
         now = time.time()
         if "data" in _CACHE and now - _CACHE_TS.get("data", 0) < _CACHE_TTL:
             return _CACHE["data"]
+        loop = asyncio.get_running_loop()
         async with _LOCK:
             # re-check inside the lock
             now = time.time()
             if "data" in _CACHE and now - _CACHE_TS.get("data", 0) < _CACHE_TTL:
                 return _CACHE["data"]
-            resp = await client.get(ENDPOINT)
-            if resp.status_code >= 400:
-                raise ValueError(f"{resp.status_code}")
-            data = resp.json()
-            index = {entry["ip_address"]: entry for entry in data}
-            _CACHE["data"] = index
-            _CACHE_TS["data"] = now
-            return index
+            mono = loop.time()
+            if mono < _FAILED_UNTIL["ts"]:
+                raise httpx.HTTPError(
+                    f"in failure backoff for {_FAILED_UNTIL['ts'] - mono:.0f}s"
+                )
+            try:
+                body = bytearray()
+                async with client.stream("GET", ENDPOINT) as resp:
+                    if resp.status_code >= 400:
+                        raise ValueError(f"{resp.status_code}")
+                    async for chunk in resp.aiter_bytes():
+                        body.extend(chunk)
+                        if len(body) > MAX_BODY:
+                            raise ValueError(
+                                f"response too large (>{MAX_BODY} bytes)"
+                            )
+                data = json.loads(bytes(body))
+                index = {entry["ip_address"]: entry for entry in data}
+                _CACHE["data"] = index
+                _CACHE_TS["data"] = now
+                return index
+            except Exception:
+                _FAILED_UNTIL["ts"] = loop.time() + _FAILURE_TTL
+                raise
 
 
 def _err(name: str, msg: str, start: float) -> ProviderResult:

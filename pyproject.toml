@@ -11,16 +11,16 @@ requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "n.erhan.ersoy"}]
 dependencies = [
-    "httpx[http2]>=0.27",
-    "rich>=13.7",
-    "tomli-w>=1.0",
+    "httpx[http2]>=0.27,<0.29",
+    "rich>=13.7,<15",
+    "tomli-w>=1.0,<2",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-    "pytest-cov>=4.1",
+    "pytest>=8.0,<9",
+    "pytest-asyncio>=0.23,<0.30",
+    "pytest-cov>=4.1,<7",
 ]
 
 [project.scripts]
