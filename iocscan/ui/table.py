@@ -28,8 +28,18 @@ VERDICT_STYLES = {
 }
 
 
-def render_table(scans: list[ScanResult], console: Console, narrow: bool = False) -> None:
-    if narrow or console.width < 140:
+AUTO_NARROW_THRESHOLD = 100
+
+
+def render_table(
+    scans: list[ScanResult],
+    console: Console,
+    narrow: bool = False,
+    wide: bool = False,
+) -> None:
+    if wide:
+        _render_wide(scans, console)
+    elif narrow or console.width < AUTO_NARROW_THRESHOLD:
         _render_compact(scans, console)
     else:
         _render_wide(scans, console)
