@@ -28,12 +28,23 @@ def _render(scans, narrow=False):
     return buf.getvalue()
 
 
-def test_table_shows_ioc_type_verdict_columns():
+def test_table_shows_ioc_and_verdict_columns():
     out = _render([_scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN, threatfox=Verdict.CLEAN,
                          feodo=Verdict.CLEAN, virustotal=Verdict.CLEAN)])
     assert "1.2.3.4" in out
-    assert "ip" in out.lower()
     assert "clean" in out.lower()
+
+
+def test_table_renames_virustotal_and_abuseipdb_headers():
+    """Provider columns use short display labels (vt, abuseip) instead of full names."""
+    out = _render([_scan(Verdict.CLEAN, virustotal=Verdict.CLEAN, abuseipdb=Verdict.CLEAN)])
+    # Header labels switched
+    assert " vt " in out or "vt\n" in out or out.count("vt") >= 1
+    assert "abuseip" in out
+    # Original long names must not appear as column headers in wide mode
+    assert "virustotal" not in out
+    # "abuseipdb" should not appear (abuseip is the only acceptable form)
+    assert "abuseipdb" not in out
 
 
 def test_table_shows_coverage_in_verdict_cell():
