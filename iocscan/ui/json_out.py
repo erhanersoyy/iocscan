@@ -4,10 +4,11 @@ import json
 from datetime import datetime, timezone
 
 from iocscan import __version__
+from iocscan.core.ioc import to_defanged
 from iocscan.core.scan import ScanResult
 
 
-def render_json(scans: list[ScanResult], min_coverage: int) -> str:
+def render_json(scans: list[ScanResult], min_coverage: int, defang: bool = False) -> str:
     payload = {
         "scan": {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -16,7 +17,7 @@ def render_json(scans: list[ScanResult], min_coverage: int) -> str:
         },
         "results": [
             {
-                "ioc": s.ioc,
+                "ioc": to_defanged(s.ioc) if defang else s.ioc,
                 "type": s.ioc_type.value,
                 "verdict": s.verdict.value,
                 "whitelisted": s.whitelisted,

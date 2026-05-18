@@ -47,6 +47,9 @@ python -m iocscan 1.2.3.4 evil.com           # scan one or more IOCs
 python -m iocscan -f iocs.txt                # one IOC per line, # comments allowed
 cat iocs.txt | python -m iocscan             # pipe from stdin
 python -m iocscan --json 8.8.8.8 > out.json  # machine-readable
+python -m iocscan --quiet -f iocs.txt        # one TSV line per IOC
+python -m iocscan --defang evil.com          # render output as evil[.]com
+python -m iocscan --sort verdict -f iocs.txt # worst-first
 python -m iocscan providers                  # see which providers are active
 ```
 
@@ -113,6 +116,25 @@ The `Verdict` column reads e.g. `● clean (9/9)` — glyph + value + how many p
 ### Summary footer
 
 After the table, a multi-line summary block shows totals, verdict counts, provider errors, cache hits/fresh fetches, and the exit code. Suppressed under `--json` and when output is piped.
+
+### Output modes
+
+| Flag | Output | Use case |
+|---|---|---|
+| *(default)* | Colored table + summary footer | Interactive triage |
+| `--json` | Pretty JSON to stdout | SOAR / SIEM ingestion |
+| `--quiet` / `-q` | TSV: `IOC\tverdict\tcoverage` per line | `grep` / `awk` / CI scripts |
+| `--defang` | Renders IOCs as `evil[.]com`, `1[.]2[.]3[.]4` in any of the above | Pasting into Slack / email / Confluence without auto-links |
+
+### Sorting
+
+`--sort {input,verdict,coverage}` (default `input`):
+
+- **`input`** — preserve the order IOCs were passed in (default; safe for scripts).
+- **`verdict`** — worst first (malicious → suspicious → unknown → clean).
+- **`coverage`** — most evidence first (highest `responding/total`).
+
+JSON output stays in input order **unless** `--sort` is explicit — machines should not be silently reordered.
 
 ---
 
