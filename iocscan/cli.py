@@ -17,21 +17,43 @@ from iocscan.core.verdict import aggregate, coverage
 from iocscan.providers import ALL_PROVIDERS
 from iocscan.providers.base import ProviderResult, Verdict
 from iocscan.ui.console import make_console
+from iocscan.ui.export import EXPORT_FORMATS, render_export
 from iocscan.ui.footer import render_summary
 from iocscan.ui.json_out import render_json
 from iocscan.ui.table import render_table
 from iocscan.ui.themes import DEFAULT_THEME, list_theme_names
+
+FORMAT_CHOICES = ("table", "json", *EXPORT_FORMATS)
 
 
 def _make_client(timeout: int) -> httpx.AsyncClient:
     return httpx.AsyncClient(http2=True, timeout=httpx.Timeout(timeout))
 
 
+_MAX_INPUT_BYTES = 50 * 1024 * 1024  # 50 MiB — same cap as bulk-blocklist providers
+
+
 def _read_inputs(args) -> list[str]:
     items: list[str] = []
     items.extend(args.iocs)
     if args.file:
-        for line in Path(args.file).read_text().splitlines():
+        try:
+            path = Path(args.file)
+            size = path.stat().st_size
+            if size > _MAX_INPUT_BYTES:
+                raise ValueError(
+                    f"input file too large ({size} bytes > {_MAX_INPUT_BYTES} limit): {args.file}"
+                )
+            content = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            raise ValueError(f"input file not found: {args.file}") from None
+        except IsADirectoryError:
+            raise ValueError(f"input path is not a file (is a directory): {args.file}") from None
+        except PermissionError:
+            raise ValueError(f"input file unreadable (permission denied): {args.file}") from None
+        except UnicodeDecodeError:
+            raise ValueError(f"input file is not valid UTF-8 text: {args.file}") from None
+        for line in content.splitlines():
             s = line.strip()
             if s and not s.startswith("#"):
                 items.append(s)
@@ -54,7 +76,13 @@ def _build_scan_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("iocs", nargs="*", help="IPs or domains to scan")
     p.add_argument("-f", "--file", help="read IOCs from file (one per line, # comments)")
-    p.add_argument("--json", action="store_true", help="emit JSON instead of table")
+    p.add_argument(
+        "-F", "--format",
+        choices=FORMAT_CHOICES,
+        default="table",
+        help="output format (default: table). table/json render as before; jsonl/csv/markdown are flat summary exports.",
+    )
+    p.add_argument("--json", action="store_true", help="deprecated alias for --format json")
     p.add_argument("--no-cache", action="store_true", help="bypass cache for this run")
     p.add_argument("--debug", action="store_true", help="verbose stderr (HTTP, errors)")
     p.add_argument("--narrow", action="store_true", help="force compact table layout")
@@ -122,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         # Fill in scan-parser defaults so attribute access is uniform
         args.iocs = []
         args.file = None
+        args.format = "table"
         args.json = False
         args.no_cache = False
         args.debug = False
@@ -175,7 +204,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_themes:
         return _cmd_list_themes(args)
 
-    raw = _read_inputs(args)
+    try:
+        raw = _read_inputs(args)
+    except ValueError as e:
+        print(f"input error: {e}", file=sys.stderr)
+        return 3
     if not raw:
         print("no IOCs provided (positional, -f, or stdin)", file=sys.stderr)
         return 3
@@ -244,11 +277,29 @@ async def _run_scan(parsed, config, args) -> int:
         # output: only when --sort != "input".
         scans_out = sort_scans(scans, args.sort) if args.sort != "input" else scans
 
+        # Resolve effective output format. --quiet (TSV, no noise) wins over
+        # everything; otherwise legacy --json maps to --format json.
+        # --json with a non-default --format is a contradiction — reject it
+        # so the user gets a clear error rather than one silently winning.
+        fmt = args.format
+        if args.json:
+            if args.format != "table":
+                print(
+                    f"error: --json conflicts with --format {args.format}; use one or the other",
+                    file=sys.stderr,
+                )
+                return 3
+            fmt = "json"
+            if not args.quiet:
+                print("warning: --json is deprecated; use --format json", file=sys.stderr)
+
         if args.quiet:
             _emit_quiet(scans_out, defang=args.defang)
-        elif args.json:
+        elif fmt == "json":
             print(render_json(scans_out, min_coverage=config.min_coverage, defang=args.defang))
-        else:
+        elif fmt in EXPORT_FORMATS:
+            print(render_export(scans_out, fmt, defang=args.defang))
+        else:  # table
             console = make_console(no_color=args.no_color, ascii_only=args.ascii, theme=args.theme)
             render_table(
                 scans_out, console,

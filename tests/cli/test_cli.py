@@ -69,6 +69,68 @@ def test_cli_invalid_args_exit_3(tmp_home, capsys, monkeypatch):
     assert "no iocs" in err.lower()
 
 
+def test_cli_file_not_found_exits_3_with_clean_message(tmp_home, capsys, tmp_path):
+    """-f with a non-existent path must exit 3 with a friendly stderr message,
+    not a Python traceback."""
+    missing = tmp_path / "does_not_exist.txt"
+    rc = main(["-f", str(missing)])
+    captured = capsys.readouterr()
+    assert rc == 3
+    assert "Traceback" not in captured.err
+    assert "file not found" in captured.err.lower()
+    assert str(missing) in captured.err
+
+
+def test_cli_file_is_directory_exits_3(tmp_home, capsys, tmp_path):
+    """-f with a directory path must exit 3 with a clear message."""
+    rc = main(["-f", str(tmp_path)])
+    captured = capsys.readouterr()
+    assert rc == 3
+    assert "Traceback" not in captured.err
+    assert "not a file" in captured.err.lower() or "directory" in captured.err.lower()
+
+
+def test_cli_file_unreadable_exits_3(tmp_home, capsys, tmp_path):
+    """-f with an unreadable file must exit 3."""
+    import os
+    if os.geteuid() == 0:
+        pytest.skip("root bypasses file permissions")
+    f = tmp_path / "secret.txt"
+    f.write_text("8.8.8.8\n")
+    f.chmod(0o000)
+    try:
+        rc = main(["-f", str(f)])
+        captured = capsys.readouterr()
+        assert rc == 3
+        assert "Traceback" not in captured.err
+        assert "permission" in captured.err.lower()
+    finally:
+        f.chmod(0o600)  # restore so tmp_path cleanup works
+
+
+def test_cli_file_too_large_exits_3(tmp_home, capsys, tmp_path, monkeypatch):
+    """-f with a file larger than the 50 MiB cap must exit 3, not OOM the process."""
+    from iocscan import cli as cli_mod
+    monkeypatch.setattr(cli_mod, "_MAX_INPUT_BYTES", 64)  # lower cap for the test
+    big = tmp_path / "big.txt"
+    big.write_text("8.8.8.8\n" * 50)  # > 64 bytes
+    rc = main(["-f", str(big)])
+    captured = capsys.readouterr()
+    assert rc == 3
+    assert "too large" in captured.err.lower()
+
+
+def test_cli_file_binary_exits_3(tmp_home, capsys, tmp_path):
+    """-f with a non-UTF-8 file must exit 3, not crash with UnicodeDecodeError."""
+    f = tmp_path / "binary.bin"
+    f.write_bytes(b"\xff\xfe\x00\x01garbage\x80\x81")
+    rc = main(["-f", str(f)])
+    captured = capsys.readouterr()
+    assert rc == 3
+    assert "Traceback" not in captured.err
+    assert "utf-8" in captured.err.lower() or "encoding" in captured.err.lower()
+
+
 def test_cli_debug_emits_per_provider_logs(tmp_home, mock_provider_responses, capsys):
     rc = main(["--debug", "8.8.8.8"])
     err = capsys.readouterr().err
@@ -165,3 +227,74 @@ def test_cli_unknown_sort_key_is_rejected(tmp_home, capsys):
     # argparse choices reject unknown values before reaching scan logic
     with pytest.raises(SystemExit):
         main(["--sort", "weird", "8.8.8.8"])
+
+
+# --- PR #4 format matrix ---
+
+def test_cli_format_csv_emits_header(tmp_home, mock_provider_responses, capsys):
+    rc = main(["--format", "csv", "8.8.8.8"])
+    out = capsys.readouterr().out
+    assert out.splitlines()[0] == "ioc,type,verdict,responding,total,whitelisted"
+    assert rc == 0
+
+
+def test_cli_format_jsonl_one_line_per_ioc(tmp_home, mock_provider_responses, capsys):
+    rc = main(["--format", "jsonl", "8.8.8.8"])
+    out = capsys.readouterr().out
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    assert len(lines) == 1
+    import json as _json
+    obj = _json.loads(lines[0])
+    assert obj["ioc"] == "8.8.8.8"
+
+
+def test_cli_format_markdown_emits_table(tmp_home, mock_provider_responses, capsys):
+    rc = main(["--format", "markdown", "8.8.8.8"])
+    out = capsys.readouterr().out
+    assert "| IOC |" in out
+    assert "|---|" in out
+
+
+def test_cli_legacy_json_flag_still_works(tmp_home, mock_provider_responses, capsys):
+    rc = main(["--json", "8.8.8.8"])
+    captured = capsys.readouterr()
+    # --json continues to produce pretty JSON on stdout (quoted key proves it)
+    assert "\"ioc\":" in captured.out
+    # …and emits a deprecation warning to stderr
+    assert "deprecated" in captured.err
+
+
+def test_cli_format_json_canonical_emits_pretty_json(tmp_home, mock_provider_responses, capsys):
+    """The non-deprecated `--format json` form must emit pretty JSON with no warning."""
+    rc = main(["--format", "json", "8.8.8.8"])
+    captured = capsys.readouterr()
+    assert "\"ioc\":" in captured.out
+    assert "deprecated" not in captured.err
+
+
+def test_cli_quiet_suppresses_json_deprecation_warning(tmp_home, mock_provider_responses, capsys):
+    """--quiet wins over everything: no deprecation noise even when --json is set."""
+    rc = main(["--quiet", "--json", "8.8.8.8"])
+    captured = capsys.readouterr()
+    # TSV output, no JSON
+    assert "\t" in captured.out
+    assert "\"ioc\":" not in captured.out
+    # And no deprecation warning leaked to stderr
+    assert "deprecated" not in captured.err
+
+
+def test_cli_json_with_format_csv_rejected(tmp_home, mock_provider_responses, capsys):
+    """Combining --json with a non-default --format is contradictory and must exit 3."""
+    rc = main(["--json", "--format", "csv", "8.8.8.8"])
+    captured = capsys.readouterr()
+    assert rc == 3
+    assert "conflict" in captured.err.lower()
+
+
+def test_cli_quiet_overrides_format(tmp_home, mock_provider_responses, capsys):
+    """--quiet wins over --format (low-noise contract)."""
+    rc = main(["--quiet", "--format", "csv", "8.8.8.8"])
+    out = capsys.readouterr().out
+    # TSV: tab-separated, not CSV header
+    assert "\t" in out
+    assert "ioc,type" not in out

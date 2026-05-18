@@ -53,6 +53,17 @@ def test_table_shows_coverage_in_verdict_cell():
     assert "(4/9)" in out
 
 
+def test_table_whitelist_flag_renders_as_top_1k():
+    """Whitelisted rows show '⚑ Top 1k', not '⚑ whitelisted', in the verdict cell."""
+    scan = ScanResult(
+        "cloudflare.com", IOCType.DOMAIN, Verdict.CLEAN, [], 0, 9, whitelisted=True
+    )
+    out = _render([scan])
+    assert "Top 1k" in out
+    assert "whitelisted" not in out
+    assert "⚑" in out
+
+
 def test_narrow_mode_uses_compact_layout():
     out = _render([_scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)], narrow=True)
     assert "urlhaus" in out

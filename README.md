@@ -119,12 +119,19 @@ After the table, a multi-line summary block shows totals, verdict counts, provid
 
 ### Output modes
 
-| Flag | Output | Use case |
+| Flag | Format | Use case |
 |---|---|---|
 | *(default)* | Colored table + summary footer | Interactive triage |
-| `--json` | Pretty JSON to stdout | SOAR / SIEM ingestion |
+| `--format json` | Pretty JSON to stdout | SOAR / SIEM ingestion (full provider detail) |
+| `--format jsonl` | One JSON object per line | Streaming pipelines |
+| `--format csv` | RFC 4180 CSV with 6 columns | Spreadsheets / ticket attachments |
+| `--format markdown` | GitHub-flavored markdown table | Paste into PR / Confluence / ticket |
 | `--quiet` / `-q` | TSV: `IOC\tverdict\tcoverage` per line | `grep` / `awk` / CI scripts |
 | `--defang` | Renders IOCs as `evil[.]com`, `1[.]2[.]3[.]4` in any of the above | Pasting into Slack / email / Confluence without auto-links |
+
+`--json` still works as a deprecated alias for `--format json`. `--quiet` wins over `--format` (low-noise contract).
+
+JSON is the only format that carries the full per-provider breakdown — `jsonl`, `csv`, and `markdown` are flat summary exports (IOC, type, verdict, coverage, whitelisted).
 
 ### Sorting
 
