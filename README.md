@@ -333,6 +333,35 @@ Found a vulnerability? Open a private security advisory on GitHub.
 
 ---
 
+## Uninstall
+
+iocscan does not install anything system-wide. Removing the project comes down to deleting the three things it creates. A guided script is included:
+
+```bash
+./uninstall.sh
+```
+
+The script walks through four steps, asking for confirmation before each:
+
+| Step | What it removes |
+|---|---|
+| 1 | `~/.iocscan/` — API keys (`config.toml`), TI cache (`cache.db`), Tranco whitelist (`tranco-1k.txt`). Offers to back up `config.toml` first. |
+| 2 | `<project>/.venv/` — the project-only virtualenv (httpx, rich, pytest, …). Other projects' venvs are unaffected. |
+| 3 | The project directory itself — source, tests, local git history. Uncommitted changes are lost. |
+| 4 | **Manual only**: GitHub remote repo deletion (irreversible, never automated). |
+
+**Not touched** (anything that belongs to other projects or the system): `python3`, `git`, `gh`, `pip`, Homebrew, `~/.ssh/`, `~/.gitconfig`, or other `.venv` directories on the machine.
+
+If you'd rather do it by hand:
+
+```bash
+rm -rf ~/.iocscan/         # user data (consider backing up config.toml first)
+rm -rf .venv/              # project venv
+cd .. && rm -rf iocscan/   # project source + local git history
+```
+
+---
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
