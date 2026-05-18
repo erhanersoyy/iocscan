@@ -59,30 +59,43 @@ iocscan understands common defanged formats (`evil[.]com`, `1[.]2[.]3[.]4`, `hxx
 
 ## Reading the output
 
-iocscan renders a **wide** table when the terminal is at least 100 columns and a **compact** table when it isn't. Use `--narrow` to force compact, or `--wide` to force wide regardless of terminal width. Both layouts use the same symbols and colors.
+iocscan renders a **wide** table when the terminal is at least 100 columns and a **compact** table when it isn't. Use `--narrow` to force compact or `--wide` to force wide. Add `--no-color` to disable ANSI colors, `--ascii` to swap Unicode glyphs for `[!]`/`[~]`/`[ ]`/etc. fallbacks (also honors the standard `NO_COLOR` / `FORCE_COLOR` env vars).
 
-### Symbols
+### Verdict glyphs
 
-| Symbol | Meaning |
+Every verdict is shown along three channels — **color + glyph + word** — so meaning survives if any one channel drops (NO_COLOR, screen reader, narrow terminal).
+
+| Glyph | Verdict | Color |
+|---|---|---|
+| `●` | malicious | bold red |
+| `◐` | suspicious | yellow |
+| `○` | clean | green |
+| `·` | unknown | dim gray |
+| `✗` | error | italic red |
+| `⚑` | whitelisted (suffix on the verdict cell) | dim |
+
+ASCII fallback: `[!]` `[~]` `[ ]` `[.]` `[x]` `[WL]`.
+
+### Cell semantics (per-provider)
+
+| Cell | Meaning |
 |---|---|
-| `—` | Provider ran, no hit / score 0 → **clean** (e.g. blocklist miss, `0 pulses`) |
-| `n/a` | Provider does not apply to this IOC type (e.g. an IP-only feed against a domain). Distinguishes "didn't run" from "ran and saw nothing". *Compact mode only.* |
-| `0/92`, `50 pulses`, `tor exit`, `15%` | Numeric or label score from the provider — interpretation depends on the source (see the [Providers](#providers) table) |
-| `err (reason)` | Provider failed (auth, network, parse, rate limit). Does **not** count toward coverage. |
+| `—` | Provider ran, no hit / score 0 → clean (e.g. blocklist miss, `0 pulses`) |
+| `·` | Provider does not apply to this IOC type (e.g. IP-only feed against a domain) |
+| `0/92`, `50 pulses`, `tor exit`, `15%` | Numeric or label score from the provider |
+| `✗ <msg>` | Hard failure: network error, 5xx, parse error |
+| `▲ 429 rate limit` | Rate limited — retryable |
+| `⚡ auth failed` | Authentication failed — fixable by setting the right API key |
 
-### Colors
-
-| Color | Verdict |
-|---|---|
-| **green** | clean |
-| **yellow** | suspicious |
-| **bold red** | malicious |
-| **italic red** | provider-level error |
-| **dim gray** | unknown / not applicable |
+Errors do **not** count toward coverage.
 
 ### Final verdict cell
 
-The `Verdict` column reads e.g. `clean (9/9)` — the value (`clean` / `suspicious` / `malicious` / `unknown`) plus how many providers actually responded out of how many were applicable. A trailing `(whitelisted)` tag means the IOC matched the bundled or Tranco whitelist and any `malicious` / `suspicious` verdict was clamped down to `clean`.
+The `Verdict` column reads e.g. `● clean (9/9)` — glyph + value + how many providers actually responded out of how many were applicable. A trailing `⚑ whitelisted` tag means the IOC matched the bundled or Tranco whitelist and any `malicious` / `suspicious` verdict was clamped down to `clean`.
+
+### Summary footer
+
+After the table, a multi-line summary block shows totals, verdict counts, provider errors, cache hits/fresh fetches, and the exit code. Suppressed under `--json` and when output is piped.
 
 ---
 
