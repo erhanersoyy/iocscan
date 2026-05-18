@@ -53,6 +53,53 @@ iocscan understands common defanged formats (`evil[.]com`, `1[.]2[.]3[.]4`, `hxx
 
 ---
 
+## Reading the output
+
+iocscan renders a **wide** table when the terminal is at least 140 columns and a **compact** table (or with `--narrow`) when it isn't. Both layouts use the same symbols and colors.
+
+### Symbols
+
+| Symbol | Meaning |
+|---|---|
+| `—` | Provider ran, no hit / score 0 → **clean** (e.g. blocklist miss, `0 pulses`) |
+| `n/a` | Provider does not apply to this IOC type (e.g. an IP-only feed against a domain). Distinguishes "didn't run" from "ran and saw nothing". *Compact mode only.* |
+| `0/92`, `50 pulses`, `tor exit`, `15%` | Numeric or label score from the provider — interpretation depends on the source (see the [Providers](#providers) table) |
+| `err (reason)` | Provider failed (auth, network, parse, rate limit). Does **not** count toward coverage. |
+
+### Colors
+
+| Color | Verdict |
+|---|---|
+| **green** | clean |
+| **yellow** | suspicious |
+| **bold red** | malicious |
+| **italic red** | provider-level error |
+| **dim gray** | unknown / not applicable |
+
+### Final verdict cell
+
+The `Verdict` column reads e.g. `clean (9/9)` — the value (`clean` / `suspicious` / `malicious` / `unknown`) plus how many providers actually responded out of how many were applicable. A trailing `(whitelisted)` tag means the IOC matched the bundled or Tranco whitelist and any `malicious` / `suspicious` verdict was clamped down to `clean`.
+
+### Compact mode (`--narrow`)
+
+When the table won't fit, every provider is listed on its own line inside the `Details` column, in the same order as the wide columns. Example:
+
+```
+urlhaus: —
+threatfox: —
+feodo: n/a
+tor: n/a
+spamhaus: n/a
+vt: 0/92
+abuseip: n/a
+otx: 50 pulses
+greynoise: n/a
+```
+
+Force compact mode anywhere with `--narrow` if you prefer this layout in a wide terminal.
+
+---
+
 ## Providers
 
 | Provider | Key required | IOC types |
