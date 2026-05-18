@@ -21,10 +21,27 @@ _DOMAIN_RE = re.compile(
 
 
 def defang(s: str) -> str:
+    """Refang a user-pasted defanged IOC back to its canonical form.
+
+    Despite the name (kept for backward compatibility), this function turns
+    `evil[.]com`, `1.2.3[.]4`, `hxxp://...` etc. *back* into normal strings
+    that the rest of the pipeline can parse. See `to_defanged()` for the
+    inverse operation used on output.
+    """
     out = s.strip()
     for pat, repl in _DEFANG_MAP:
         out = re.sub(pat, repl, out, flags=re.IGNORECASE)
     return out
+
+
+def to_defanged(s: str) -> str:
+    """Render a canonical IOC in the standard defanged form: every `.` → `[.]`.
+
+    Used when the caller passes `--defang` so output (table, JSON, TSV) is
+    safe to paste into Slack / email / Confluence without auto-linking.
+    Cache keys and the canonical "ioc" used by scan logic stay refanged.
+    """
+    return s.replace(".", "[.]")
 
 
 def _strip_url(s: str) -> str:

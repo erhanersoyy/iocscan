@@ -11,8 +11,8 @@ import httpx
 
 from iocscan.core.cache import Cache
 from iocscan.core.config import load_config
-from iocscan.core.ioc import parse_iocs
-from iocscan.core.scan import ScanResult, _apply_whitelist, scan_ioc
+from iocscan.core.ioc import parse_iocs, to_defanged
+from iocscan.core.scan import ScanResult, _apply_whitelist, scan_ioc, sort_scans
 from iocscan.core.verdict import aggregate, coverage
 from iocscan.providers import ALL_PROVIDERS
 from iocscan.providers.base import ProviderResult, Verdict
@@ -68,6 +68,14 @@ def _build_scan_parser() -> argparse.ArgumentParser:
         help=f"color theme (default: {DEFAULT_THEME}; env: IOCSCAN_THEME)",
     )
     p.add_argument("--list-themes", action="store_true", help="show one-line preview of each theme then exit")
+    p.add_argument("--defang", action="store_true", help="render IOCs in defanged form (1.2.3[.]4) in table/JSON/TSV output")
+    p.add_argument("--quiet", "-q", action="store_true", help="suppress table + footer; emit TSV one line per IOC (IOC\\tverdict\\tcoverage)")
+    p.add_argument(
+        "--sort",
+        choices=("input", "verdict", "coverage"),
+        default="input",
+        help="output order (default: input; verdict = worst-first; coverage = most-evidence-first)",
+    )
     p.add_argument("--abusech-key", help="Abuse.ch API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_ABUSECH_KEY env var)")
     p.add_argument("--vt-key", help="VirusTotal API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_VT_KEY env var)")
     p.add_argument("--abuseipdb-key", help="AbuseIPDB API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_ABUSEIPDB_KEY env var)")
@@ -123,6 +131,9 @@ def main(argv: list[str] | None = None) -> int:
         args.ascii = False
         args.theme = os.environ.get("IOCSCAN_THEME", DEFAULT_THEME)
         args.list_themes = False
+        args.defang = False
+        args.quiet = False
+        args.sort = "input"
         args.abusech_key = None
         args.vt_key = None
         args.abuseipdb_key = None
@@ -227,14 +238,26 @@ async def _run_scan(parsed, config, args) -> int:
         else:
             exit_code = 0
 
-        if args.json:
-            print(render_json(scans, min_coverage=config.min_coverage))
+        # --sort: input order unchanged unless explicit. For --json, the
+        # rule is that machine output stays in input order unless the user
+        # opts in — so we apply the same sort to both human and machine
+        # output: only when --sort != "input".
+        scans_out = sort_scans(scans, args.sort) if args.sort != "input" else scans
+
+        if args.quiet:
+            _emit_quiet(scans_out, defang=args.defang)
+        elif args.json:
+            print(render_json(scans_out, min_coverage=config.min_coverage, defang=args.defang))
         else:
             console = make_console(no_color=args.no_color, ascii_only=args.ascii, theme=args.theme)
-            render_table(scans, console, narrow=args.narrow, wide=args.wide, ascii_only=args.ascii)
-            if console.is_terminal and len(scans) > 0:
+            render_table(
+                scans_out, console,
+                narrow=args.narrow, wide=args.wide,
+                ascii_only=args.ascii, defang=args.defang,
+            )
+            if console.is_terminal and len(scans_out) > 0:
                 render_summary(
-                    scans, elapsed_ms, exit_code, console,
+                    scans_out, elapsed_ms, exit_code, console,
                     cache_hits=cache_hits, cache_fresh=cache_fresh,
                     ascii_only=args.ascii,
                 )
@@ -319,6 +342,13 @@ def _cmd_providers(config) -> int:
         kinds = ",".join(sorted(t.value for t in p.supports))
         print(f"{p.name:12} [{kinds:>10}] {status}")
     return 0
+
+
+def _emit_quiet(scans, *, defang: bool) -> None:
+    """One TSV line per IOC: IOC\\tverdict\\tresponding/total. No color, no header."""
+    for s in scans:
+        ioc = to_defanged(s.ioc) if defang else s.ioc
+        print(f"{ioc}\t{s.verdict.value}\t{s.responding}/{s.total}")
 
 
 def _cmd_list_themes(args) -> int:
