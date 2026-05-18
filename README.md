@@ -24,42 +24,32 @@ Four providers work out of the box (no API key). Five more activate when you add
 
 Requires Python 3.11 or newer.
 
-### Option A — pre-built wheel from GitHub Releases
-
-Grab the latest wheel from the [Releases page](https://github.com/erhanersoyy/iocscan/releases/latest) and install it with `pipx` (isolated) or `pip` (current env):
-
-```bash
-# Replace VERSION with the latest release tag, e.g. v0.1.0
-curl -L -o iocscan.whl \
-  https://github.com/erhanersoyy/iocscan/releases/download/VERSION/iocscan-VERSION-py3-none-any.whl
-
-pipx install ./iocscan.whl     # recommended — isolated install with its own venv
-# or
-pip install ./iocscan.whl
-```
-
-### Option B — from source
-
 ```bash
 git clone https://github.com/erhanersoyy/iocscan.git
 cd iocscan
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
+
+That's it. Every command below assumes the venv is active. Re-activate any new terminal with `source .venv/bin/activate`.
 
 ---
 
 ## Quick start
 
 ```bash
-iocscan 1.2.3.4 evil.com           # scan one or more IOCs
-iocscan -f iocs.txt                # one IOC per line, # comments allowed
-cat iocs.txt | iocscan             # pipe from stdin
-iocscan --json 8.8.8.8 > out.json  # machine-readable
-iocscan providers                  # see which providers are active
+python -m iocscan 1.2.3.4 evil.com           # scan one or more IOCs
+python -m iocscan -f iocs.txt                # one IOC per line, # comments allowed
+cat iocs.txt | python -m iocscan             # pipe from stdin
+python -m iocscan --json 8.8.8.8 > out.json  # machine-readable
+python -m iocscan providers                  # see which providers are active
 ```
 
 iocscan understands common defanged formats (`evil[.]com`, `1[.]2[.]3[.]4`, `hxxp://...`) and bare URLs (the hostname is extracted).
+
+> Tip: if `python -m iocscan ...` feels verbose, add an alias to your shell rc:
+> `alias iocscan='python -m iocscan'` — then everything below works as `iocscan ...`.
 
 ---
 
@@ -88,11 +78,11 @@ Three ways to provide keys (lowest → highest priority): config file → enviro
 **Recommended — config file** (stored at `~/.iocscan/config.toml`, mode 0600):
 
 ```bash
-iocscan config set abusech    YOUR_KEY  # single key for URLhaus + ThreatFox
-iocscan config set virustotal YOUR_KEY
-iocscan config set abuseipdb  YOUR_KEY
-iocscan config set otx        YOUR_KEY
-iocscan config set greynoise  YOUR_KEY  # optional; raises anonymous rate limit
+python -m iocscan config set abusech    YOUR_KEY  # single key for URLhaus + ThreatFox
+python -m iocscan config set virustotal YOUR_KEY
+python -m iocscan config set abuseipdb  YOUR_KEY
+python -m iocscan config set otx        YOUR_KEY
+python -m iocscan config set greynoise  YOUR_KEY  # optional; raises anonymous rate limit
 ```
 
 **Environment variables** (useful in CI):
@@ -108,14 +98,14 @@ export IOCSCAN_GREYNOISE_KEY=...   # optional
 **CLI flags** (insecure — visible to other local users via `ps`; prefer env or config):
 
 ```bash
-iocscan --vt-key YOUR_KEY 8.8.8.8
+python -m iocscan --vt-key YOUR_KEY 8.8.8.8
 ```
 
 Inspect what's loaded (keys are masked):
 
 ```bash
-iocscan config show
-iocscan config path
+python -m iocscan config show
+python -m iocscan config path
 ```
 
 ---
@@ -125,7 +115,7 @@ iocscan config path
 ### 1. SOC analyst — quick triage
 
 ```bash
-iocscan 203.0.113.10 malicious-domain.test
+python -m iocscan 203.0.113.10 malicious-domain.test
 ```
 
 Output is a colored table with one row per provider plus a final verdict, plus per-IOC coverage (e.g. `7/9 responding`).
@@ -139,7 +129,7 @@ Output is a colored table with one row per provider plus a final verdict, plus p
 evil[.]com
 hxxps://phish.example/login
 
-iocscan -f iocs.txt
+python -m iocscan -f iocs.txt
 ```
 
 Blank lines and `#` comments are ignored. Defanged formats are normalised automatically.
@@ -147,7 +137,7 @@ Blank lines and `#` comments are ignored. Defanged formats are normalised automa
 ### 3. SOAR / SIEM integration with `--json`
 
 ```bash
-iocscan --json -f iocs.txt > results.json
+python -m iocscan --json -f iocs.txt > results.json
 ```
 
 ```jsonc
@@ -173,7 +163,7 @@ iocscan --json -f iocs.txt > results.json
 ### 4. CI / CD pipeline — fail the build on malicious IOCs
 
 ```bash
-iocscan -f deploy-artifacts/ioc-extract.txt
+python -m iocscan -f deploy-artifacts/ioc-extract.txt
 case $? in
   0) echo "all clean — proceed";;
   1) echo "MALICIOUS IOC found — block release"; exit 1;;
@@ -188,7 +178,7 @@ esac
 ```bash
 grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' /var/log/access.log \
   | sort -u \
-  | iocscan --json \
+  | python -m iocscan --json \
   | jq '.results[] | select(.verdict == "malicious") | .ioc'
 ```
 
@@ -197,7 +187,7 @@ grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' /var/log/access.log \
 Paste defanged indicators from a report straight in:
 
 ```bash
-echo "login-secure[.]bank-update[.]top" | iocscan
+echo "login-secure[.]bank-update[.]top" | python -m iocscan
 ```
 
 ---
@@ -231,9 +221,9 @@ These are part of the public contract — safe to script against.
 Results are cached at `~/.iocscan/cache.db` for 24 hours.
 
 ```bash
-iocscan --no-cache 8.8.8.8        # bypass cache for one run
-iocscan cache stats               # rows, IOCs, age, disk size
-iocscan cache clear               # flush everything
+python -m iocscan --no-cache 8.8.8.8        # bypass cache for one run
+python -m iocscan cache stats               # rows, IOCs, age, disk size
+python -m iocscan cache clear               # flush everything
 ```
 
 The cache merges with new fetches per-provider — missing providers (e.g. newly-added API key) are filled in incrementally.
@@ -245,8 +235,8 @@ The cache merges with new fetches per-provider — missing providers (e.g. newly
 `iocscan` ships with a bundled list of well-known infrastructure domains that always override `malicious`/`suspicious` to `clean`. To augment with the [Tranco](https://tranco-list.eu) top-1K daily list (research-grade popularity ranking):
 
 ```bash
-iocscan whitelist update   # fetch latest Tranco top-1K (~50 KB)
-iocscan whitelist stats    # cache age, domain count
+python -m iocscan whitelist update   # fetch latest Tranco top-1K (~50 KB)
+python -m iocscan whitelist stats    # cache age, domain count
 ```
 
 The cache lives at `~/.iocscan/tranco-1k.txt`. Re-run `update` weekly to keep it fresh.
@@ -255,19 +245,21 @@ The cache lives at `~/.iocscan/tranco-1k.txt`. Re-run `update` weekly to keep it
 
 ## Troubleshooting
 
-- **`config error: ...`** — `~/.iocscan/config.toml` is malformed. `iocscan config path` shows the location; edit or delete.
-- **All results say `auth failed`** — your API key is wrong or expired. Verify with `iocscan config show`.
+- **`config error: ...`** — `~/.iocscan/config.toml` is malformed. `python -m iocscan config path` shows the location; edit or delete.
+- **All results say `auth failed`** — your API key is wrong or expired. Verify with `python -m iocscan config show`.
 - **All results say `429 rate limit`** — you're hitting free-tier limits. Wait, or add a key for higher-tier providers (GreyNoise especially).
-- **Exit code 5 (all unknown)** — fewer than 3 providers responded. Add more API keys; see `iocscan providers`.
-- **Verbose troubleshooting** — `iocscan --debug ...` logs each provider call to stderr (no API keys are logged).
+- **Exit code 5 (all unknown)** — fewer than 3 providers responded. Add more API keys; see `python -m iocscan providers`.
+- **Verbose troubleshooting** — `python -m iocscan --debug ...` logs each provider call to stderr (no API keys are logged).
 
 ---
 
 ## Development
 
+Same install as above, plus dev extras for tests:
+
 ```bash
-# Install dev extras
-pip install -e ".[dev]"
+pip install -r requirements.txt
+pip install pytest pytest-asyncio pytest-cov
 
 # Run the test suite (network tests are excluded by default)
 pytest tests/ -q
