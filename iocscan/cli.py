@@ -20,6 +20,7 @@ from iocscan.ui.console import make_console
 from iocscan.ui.footer import render_summary
 from iocscan.ui.json_out import render_json
 from iocscan.ui.table import render_table
+from iocscan.ui.themes import DEFAULT_THEME, list_theme_names
 
 
 def _make_client(timeout: int) -> httpx.AsyncClient:
@@ -60,6 +61,13 @@ def _build_scan_parser() -> argparse.ArgumentParser:
     p.add_argument("--wide", action="store_true", help="force wide table layout (overrides terminal-width auto-detect)")
     p.add_argument("--no-color", action="store_true", help="disable ANSI colors (equivalent to NO_COLOR=1)")
     p.add_argument("--ascii", action="store_true", help="use ASCII glyphs ([!], [~], [ ], …) instead of Unicode")
+    p.add_argument(
+        "--theme",
+        choices=list_theme_names(),
+        default=os.environ.get("IOCSCAN_THEME", DEFAULT_THEME),
+        help=f"color theme (default: {DEFAULT_THEME}; env: IOCSCAN_THEME)",
+    )
+    p.add_argument("--list-themes", action="store_true", help="show one-line preview of each theme then exit")
     p.add_argument("--abusech-key", help="Abuse.ch API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_ABUSECH_KEY env var)")
     p.add_argument("--vt-key", help="VirusTotal API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_VT_KEY env var)")
     p.add_argument("--abuseipdb-key", help="AbuseIPDB API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_ABUSEIPDB_KEY env var)")
@@ -113,6 +121,8 @@ def main(argv: list[str] | None = None) -> int:
         args.wide = False
         args.no_color = False
         args.ascii = False
+        args.theme = os.environ.get("IOCSCAN_THEME", DEFAULT_THEME)
+        args.list_themes = False
         args.abusech_key = None
         args.vt_key = None
         args.abuseipdb_key = None
@@ -151,6 +161,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_providers(config)
     if args.cmd == "whitelist":
         return _cmd_whitelist(args)
+    if args.list_themes:
+        return _cmd_list_themes(args)
 
     raw = _read_inputs(args)
     if not raw:
@@ -218,7 +230,7 @@ async def _run_scan(parsed, config, args) -> int:
         if args.json:
             print(render_json(scans, min_coverage=config.min_coverage))
         else:
-            console = make_console(no_color=args.no_color, ascii_only=args.ascii)
+            console = make_console(no_color=args.no_color, ascii_only=args.ascii, theme=args.theme)
             render_table(scans, console, narrow=args.narrow, wide=args.wide, ascii_only=args.ascii)
             if console.is_terminal and len(scans) > 0:
                 render_summary(
@@ -306,6 +318,22 @@ def _cmd_providers(config) -> int:
         status = "active" if p.has_key(config) else "missing key"
         kinds = ",".join(sorted(t.value for t in p.supports))
         print(f"{p.name:12} [{kinds:>10}] {status}")
+    return 0
+
+
+def _cmd_list_themes(args) -> int:
+    """One-line preview of every theme, then exit."""
+    for name in list_theme_names():
+        console = make_console(no_color=args.no_color, theme=name)
+        marker = " (default)" if name == DEFAULT_THEME else ""
+        console.print(
+            f"[table.header]{name}[/]{marker}: "
+            f"[verdict.malicious]● malicious[/] "
+            f"[verdict.suspicious]◐ suspicious[/] "
+            f"[verdict.clean]○ clean[/] "
+            f"[verdict.unknown]· unknown[/] "
+            f"[verdict.error]✗ error[/]"
+        )
     return 0
 
 
