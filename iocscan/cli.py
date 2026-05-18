@@ -45,19 +45,22 @@ _SUBCOMMANDS = {"config", "cache", "providers", "whitelist"}
 
 
 def _build_scan_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="iocscan",
-                                description="Consolidated TI verdict for IPs and domains.")
+    p = argparse.ArgumentParser(
+        prog="iocscan",
+        description="Consolidated TI verdict for IPs and domains.",
+        epilog="Security note: passing API keys via --*-key flags exposes them to other local users (visible in 'ps'). Prefer IOCSCAN_*_KEY env vars or 'iocscan config set <provider> <value>'."
+    )
     p.add_argument("iocs", nargs="*", help="IPs or domains to scan")
     p.add_argument("-f", "--file", help="read IOCs from file (one per line, # comments)")
     p.add_argument("--json", action="store_true", help="emit JSON instead of table")
     p.add_argument("--no-cache", action="store_true", help="bypass cache for this run")
     p.add_argument("--debug", action="store_true", help="verbose stderr (HTTP, errors)")
     p.add_argument("--narrow", action="store_true", help="force compact table layout")
-    p.add_argument("--abusech-key")
-    p.add_argument("--vt-key")
-    p.add_argument("--abuseipdb-key")
-    p.add_argument("--otx-key")
-    p.add_argument("--greynoise-key")
+    p.add_argument("--abusech-key", help="Abuse.ch API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_ABUSECH_KEY env var)")
+    p.add_argument("--vt-key", help="VirusTotal API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_VT_KEY env var)")
+    p.add_argument("--abuseipdb-key", help="AbuseIPDB API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_ABUSEIPDB_KEY env var)")
+    p.add_argument("--otx-key", help="OTX API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_OTX_KEY env var)")
+    p.add_argument("--greynoise-key", help="GreyNoise API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_GREYNOISE_KEY env var)")
     return p
 
 
