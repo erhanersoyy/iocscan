@@ -12,6 +12,13 @@ PROVIDER_ORDER = [
     "virustotal", "abuseipdb", "otx", "greynoise",
 ]
 
+# Display-only short labels for column headers. Internal provider names
+# (PROVIDER_ORDER, config keys, verdict weights, cache rows) stay unchanged.
+PROVIDER_LABELS = {
+    "virustotal": "vt",
+    "abuseipdb": "abuseip",
+}
+
 VERDICT_STYLES = {
     Verdict.MALICIOUS:  "bold red",
     Verdict.SUSPICIOUS: "yellow",
@@ -31,15 +38,14 @@ def render_table(scans: list[ScanResult], console: Console, narrow: bool = False
 def _render_wide(scans: list[ScanResult], console: Console) -> None:
     t = Table(show_header=True, header_style="bold")
     t.add_column("IOC")
-    t.add_column("Type")
     t.add_column("Verdict")
     for name in PROVIDER_ORDER:
-        t.add_column(name)
+        t.add_column(PROVIDER_LABELS.get(name, name))
     for s in scans:
         verdict_text = f"[{VERDICT_STYLES[s.verdict]}]{s.verdict.value}[/] ({s.responding}/{s.total})"
         if s.whitelisted:
             verdict_text += " [dim](whitelisted)[/]"
-        row = [_escape(s.ioc), s.ioc_type.value, verdict_text]
+        row = [_escape(s.ioc), verdict_text]
         by_name = {r.provider: r for r in s.provider_results}
         for name in PROVIDER_ORDER:
             r = by_name.get(name)
@@ -57,7 +63,6 @@ def _render_wide(scans: list[ScanResult], console: Console) -> None:
 def _render_compact(scans: list[ScanResult], console: Console) -> None:
     t = Table(show_header=True, header_style="bold")
     t.add_column("IOC")
-    t.add_column("Type")
     t.add_column("Verdict")
     t.add_column("Details")
     for s in scans:
@@ -66,9 +71,10 @@ def _render_compact(scans: list[ScanResult], console: Console) -> None:
             verdict_text += " [dim](whitelisted)[/]"
         details = []
         for r in s.provider_results:
+            label = PROVIDER_LABELS.get(r.provider, r.provider)
             if r.verdict == Verdict.MALICIOUS or r.verdict == Verdict.SUSPICIOUS:
-                details.append(f"{r.provider}:{_escape(r.score or '')}")
+                details.append(f"{label}:{_escape(r.score or '')}")
             elif r.verdict == Verdict.ERROR:
-                details.append(f"{r.provider}:err")
-        t.add_row(_escape(s.ioc), s.ioc_type.value, verdict_text, " | ".join(details) or "—")
+                details.append(f"{label}:err")
+        t.add_row(_escape(s.ioc), verdict_text, " | ".join(details) or "—")
     console.print(t)
