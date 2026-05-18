@@ -33,13 +33,17 @@ class _RateLimiter:
     async def wait(self) -> None:
         if self.min_interval <= 0:
             return
+        loop = asyncio.get_running_loop()
         async with self._lock:
-            loop = asyncio.get_event_loop()
             now = loop.time()
             delay = self.min_interval - (now - self._last_call)
-            if delay > 0:
-                await asyncio.sleep(delay)
-            self._last_call = asyncio.get_event_loop().time()
+            # Update last_call to scheduled time BEFORE sleeping, then release
+            # lock so concurrent callers can compute their own scheduled time
+            # immediately rather than waiting in a chain of held-lock sleeps.
+            scheduled = now + max(delay, 0)
+            self._last_call = scheduled
+        if delay > 0:
+            await asyncio.sleep(delay)
 
 
 def _limiter_for(provider: Provider) -> _RateLimiter:

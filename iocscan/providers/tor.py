@@ -12,6 +12,9 @@ ENDPOINT = "https://check.torproject.org/torbulkexitlist"
 _CACHE: dict[str, set[str]] = {}
 _CACHE_TS: dict[str, float] = {}
 _CACHE_TTL = 6 * 3600
+# Module-level Lock: Python 3.10+ binds the lock to the running loop on
+# first await rather than at construction, so this works under any loop
+# the CLI happens to spawn. Do NOT downgrade Python to 3.9.
 _LOCK = asyncio.Lock()
 
 

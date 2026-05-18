@@ -12,6 +12,9 @@ ENDPOINT = "https://feodotracker.abuse.ch/downloads/ipblocklist.json"
 _CACHE: dict[str, dict] = {}
 _CACHE_TS: dict[str, float] = {}
 _CACHE_TTL = 6 * 3600  # in-process cache 6h
+# Module-level Lock: Python 3.10+ binds the lock to the running loop on
+# first await rather than at construction, so this works under any loop
+# the CLI happens to spawn. Do NOT downgrade Python to 3.9.
 _LOCK = asyncio.Lock()
 
 
