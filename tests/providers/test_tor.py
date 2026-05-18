@@ -11,6 +11,7 @@ def _reset_tor_cache():
     from iocscan.providers import tor
     tor._CACHE.clear()
     tor._CACHE_TS.clear()
+    tor._FAILED_UNTIL["ts"] = 0.0
     yield
 
 
@@ -42,3 +43,45 @@ async def test_error():
     async with _c(lambda req: httpx.Response(503)) as c:
         r = await Tor().lookup("1.2.3.4", IOCType.IP, c, Config())
     assert r.verdict == Verdict.ERROR
+
+
+async def test_tor_response_too_large_rejected():
+    """Content-Length > 50 MB should surface as Verdict.ERROR, not crash."""
+    from iocscan.providers.tor import MAX_BODY
+    huge = str(MAX_BODY + 1)
+
+    def handler(req):
+        return httpx.Response(
+            200,
+            content="1.2.3.4\n",
+            headers={"content-length": huge},
+        )
+
+    async with _c(handler) as c:
+        r = await Tor().lookup("1.2.3.4", IOCType.IP, c, Config())
+    assert r.verdict == Verdict.ERROR
+    assert "too large" in (r.error or "")
+
+
+async def test_tor_failure_backoff():
+    """After a network error, a second request within 30 s must NOT fire another HTTP call."""
+    from iocscan.providers import tor
+
+    call_count = {"n": 0}
+
+    def failing_handler(req):
+        call_count["n"] += 1
+        raise httpx.ConnectError("simulated failure")
+
+    async with _c(failing_handler) as c:
+        r1 = await Tor().lookup("1.2.3.4", IOCType.IP, c, Config())
+    assert r1.verdict == Verdict.ERROR
+    assert call_count["n"] == 1
+
+    # Second call within the backoff window — must NOT issue another HTTP request
+    async with _c(failing_handler) as c:
+        r2 = await Tor().lookup("1.2.3.4", IOCType.IP, c, Config())
+    assert r2.verdict == Verdict.ERROR
+    assert call_count["n"] == 1, (
+        f"expected 1 HTTP call total (backoff), got {call_count['n']}"
+    )

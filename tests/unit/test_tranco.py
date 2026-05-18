@@ -78,3 +78,44 @@ def test_fetch_and_save_no_recent_list_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(tranco.httpx, "get", fake_get)
     with pytest.raises(ValueError, match="no recent list"):
         tranco.fetch_and_save(path=tmp_path / "x.txt")
+
+
+def test_tranco_response_too_large_rejected(tmp_path, monkeypatch):
+    """A response whose Content-Length exceeds 50 MB must raise ValueError."""
+    from iocscan.core.tranco import MAX_BODY
+    meta_body = '{"list_id": "BIG", "available": true, "failed": false}'
+    csv_body = "1,google.com\n"
+    huge = str(MAX_BODY + 1)
+
+    def fake_get(url, **kwargs):
+        if "/api/lists/date/" in url:
+            return httpx.Response(200, content=meta_body)
+        # The actual CSV download returns a suspiciously large content-length
+        return httpx.Response(
+            200,
+            content=csv_body,
+            headers={"content-length": huge},
+        )
+
+    monkeypatch.setattr(tranco.httpx, "get", fake_get)
+    with pytest.raises(ValueError, match="too large"):
+        tranco.fetch_and_save(path=tmp_path / "tranco.txt")
+
+
+def test_tranco_meta_response_too_large_raises(tmp_path, monkeypatch):
+    """A metadata endpoint that returns Content-Length > 50 MB must raise ValueError."""
+    from iocscan.core.tranco import MAX_BODY
+    huge = str(MAX_BODY + 1)
+
+    def fake_get(url, **kwargs):
+        if "/api/lists/date/" in url:
+            return httpx.Response(
+                200,
+                content='{"list_id": "X", "available": true, "failed": false}',
+                headers={"content-length": huge},
+            )
+        return httpx.Response(404)
+
+    monkeypatch.setattr(tranco.httpx, "get", fake_get)
+    with pytest.raises(ValueError, match="too large"):
+        tranco.fetch_and_save(path=tmp_path / "tranco.txt")

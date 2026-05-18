@@ -21,6 +21,7 @@ import httpx
 TRANCO_API_BASE = "https://tranco-list.eu"
 TRANCO_TOP_N = 1000
 CACHE_PATH = Path.home() / ".iocscan" / "tranco-1k.txt"
+MAX_BODY = 50 * 1024 * 1024  # 50 MB — guard against OOM on hostile/MitM endpoints
 
 
 def _latest_list_url() -> str:
@@ -33,6 +34,11 @@ def _latest_list_url() -> str:
         resp = httpx.get(meta_url, timeout=15.0)
         if resp.status_code != 200:
             continue
+        content_length = int(resp.headers.get("content-length", 0))
+        if content_length > MAX_BODY:
+            raise ValueError(
+                f"response too large: {content_length} bytes (max {MAX_BODY})"
+            )
         try:
             meta = resp.json()
         except ValueError:
@@ -48,6 +54,11 @@ def fetch_and_save(*, path: Path = CACHE_PATH) -> int:
     resp = httpx.get(url, timeout=30.0)
     if resp.status_code != 200:
         raise ValueError(f"Tranco download failed: HTTP {resp.status_code}")
+    content_length = int(resp.headers.get("content-length", 0))
+    if content_length > MAX_BODY:
+        raise ValueError(
+            f"response too large: {content_length} bytes (max {MAX_BODY})"
+        )
     domains: list[str] = []
     for line in resp.text.splitlines():
         line = line.strip()

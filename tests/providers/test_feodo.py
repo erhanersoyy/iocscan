@@ -14,6 +14,7 @@ def _reset_feodo_cache():
     from iocscan.providers import feodo
     feodo._CACHE.clear()
     feodo._CACHE_TS.clear()
+    feodo._FAILED_UNTIL["ts"] = 0.0
     yield
 
 
@@ -46,6 +47,50 @@ async def test_error_response():
     async with _c(lambda req: httpx.Response(503)) as c:
         r = await Feodo().lookup("1.2.3.4", IOCType.IP, c, Config())
     assert r.verdict == Verdict.ERROR
+
+
+async def test_feodo_response_too_large_rejected():
+    """Content-Length > 50 MB should surface as Verdict.ERROR, not crash."""
+    from iocscan.providers.feodo import MAX_BODY
+    body = '[{"ip_address": "1.2.3.4", "malware": "Emotet"}]'
+    huge = str(MAX_BODY + 1)
+
+    def handler(req):
+        return httpx.Response(
+            200,
+            content=body,
+            headers={"content-length": huge},
+        )
+
+    async with _c(handler) as c:
+        r = await Feodo().lookup("1.2.3.4", IOCType.IP, c, Config())
+    assert r.verdict == Verdict.ERROR
+    assert "too large" in (r.error or "")
+
+
+async def test_feodo_failure_backoff():
+    """After a network error, a second request within 30 s must NOT fire another HTTP call."""
+    import asyncio
+    from iocscan.providers import feodo
+
+    call_count = {"n": 0}
+
+    def failing_handler(req):
+        call_count["n"] += 1
+        raise httpx.ConnectError("simulated failure")
+
+    async with _c(failing_handler) as c:
+        r1 = await Feodo().lookup("1.2.3.4", IOCType.IP, c, Config())
+    assert r1.verdict == Verdict.ERROR
+    assert call_count["n"] == 1
+
+    # Second call within the backoff window — must NOT issue another HTTP request
+    async with _c(failing_handler) as c:
+        r2 = await Feodo().lookup("1.2.3.4", IOCType.IP, c, Config())
+    assert r2.verdict == Verdict.ERROR
+    assert call_count["n"] == 1, (
+        f"expected 1 HTTP call total (backoff), got {call_count['n']}"
+    )
 
 
 async def test_concurrent_load_calls_fetch_only_once(monkeypatch):
