@@ -58,15 +58,18 @@ class Tor(Provider):
                     f"in failure backoff for {_FAILED_UNTIL['ts'] - mono:.0f}s"
                 )
             try:
-                resp = await client.get(ENDPOINT)
-                if resp.status_code >= 400:
-                    raise ValueError(f"{resp.status_code}")
-                content_length = int(resp.headers.get("content-length", 0))
-                if content_length > MAX_BODY:
-                    raise ValueError(
-                        f"response too large: {content_length} bytes (max {MAX_BODY})"
-                    )
-                exits = {line.strip() for line in resp.text.splitlines() if line.strip()}
+                body = bytearray()
+                async with client.stream("GET", ENDPOINT) as resp:
+                    if resp.status_code >= 400:
+                        raise ValueError(f"{resp.status_code}")
+                    async for chunk in resp.aiter_bytes():
+                        body.extend(chunk)
+                        if len(body) > MAX_BODY:
+                            raise ValueError(
+                                f"response too large (>{MAX_BODY} bytes)"
+                            )
+                text = body.decode("utf-8")
+                exits = {line.strip() for line in text.splitlines() if line.strip()}
                 _CACHE["data"] = exits
                 _CACHE_TS["data"] = now
                 return exits

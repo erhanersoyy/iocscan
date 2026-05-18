@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 
 import httpx
@@ -60,15 +61,17 @@ class Feodo(Provider):
                     f"in failure backoff for {_FAILED_UNTIL['ts'] - mono:.0f}s"
                 )
             try:
-                resp = await client.get(ENDPOINT)
-                if resp.status_code >= 400:
-                    raise ValueError(f"{resp.status_code}")
-                content_length = int(resp.headers.get("content-length", 0))
-                if content_length > MAX_BODY:
-                    raise ValueError(
-                        f"response too large: {content_length} bytes (max {MAX_BODY})"
-                    )
-                data = resp.json()
+                body = bytearray()
+                async with client.stream("GET", ENDPOINT) as resp:
+                    if resp.status_code >= 400:
+                        raise ValueError(f"{resp.status_code}")
+                    async for chunk in resp.aiter_bytes():
+                        body.extend(chunk)
+                        if len(body) > MAX_BODY:
+                            raise ValueError(
+                                f"response too large (>{MAX_BODY} bytes)"
+                            )
+                data = json.loads(bytes(body))
                 index = {entry["ip_address"]: entry for entry in data}
                 _CACHE["data"] = index
                 _CACHE_TS["data"] = now

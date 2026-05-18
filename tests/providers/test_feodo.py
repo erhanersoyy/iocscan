@@ -50,17 +50,39 @@ async def test_error_response():
 
 
 async def test_feodo_response_too_large_rejected():
-    """Content-Length > 50 MB should surface as Verdict.ERROR, not crash."""
+    """A response body exceeding MAX_BODY must surface as Verdict.ERROR.
+
+    Updated to use an actually oversized body via httpx.ByteStream so that
+    the streaming byte-counter (not the old header check) is exercised.
+    """
     from iocscan.providers.feodo import MAX_BODY
-    body = '[{"ip_address": "1.2.3.4", "malware": "Emotet"}]'
-    huge = str(MAX_BODY + 1)
+
+    oversized_body = b"x" * (MAX_BODY + 1)
 
     def handler(req):
-        return httpx.Response(
-            200,
-            content=body,
-            headers={"content-length": huge},
-        )
+        return httpx.Response(200, stream=httpx.ByteStream(oversized_body))
+
+    async with _c(handler) as c:
+        r = await Feodo().lookup("1.2.3.4", IOCType.IP, c, Config())
+    assert r.verdict == Verdict.ERROR
+    assert "too large" in (r.error or "")
+
+
+async def test_feodo_response_no_content_length_still_capped():
+    """Body > MAX_BODY with NO content-length header must still surface as Verdict.ERROR.
+
+    The old header-based check would default content_length to 0 and skip the
+    guard entirely (the bypass bug).  The streaming byte-counter must catch it
+    regardless of whether content-length is present.
+    """
+    from iocscan.providers.feodo import MAX_BODY
+
+    oversized_body = b"x" * (MAX_BODY + 1)
+
+    def handler(req):
+        # httpx.ByteStream omits the auto-injected content-length header,
+        # simulating a server/MitM that strips or never sends it.
+        return httpx.Response(200, stream=httpx.ByteStream(oversized_body))
 
     async with _c(handler) as c:
         r = await Feodo().lookup("1.2.3.4", IOCType.IP, c, Config())
