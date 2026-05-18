@@ -23,11 +23,11 @@ from iocscan.ui.glyph import verdict_glyph
 
 
 VERDICT_STYLES = {
-    Verdict.MALICIOUS:  "bold red",
-    Verdict.SUSPICIOUS: "yellow",
-    Verdict.CLEAN:      "green",
-    Verdict.UNKNOWN:    "dim",
-    Verdict.ERROR:      "italic red",
+    Verdict.MALICIOUS:  "verdict.malicious",
+    Verdict.SUSPICIOUS: "verdict.suspicious",
+    Verdict.CLEAN:      "verdict.clean",
+    Verdict.UNKNOWN:    "verdict.unknown",
+    Verdict.ERROR:      "verdict.error",
 }
 
 
@@ -62,8 +62,8 @@ def render_summary(
     worst = _worst_verdict(scans)
 
     rule = "─" * min(console.width or 60, 60)
-    console.print(rule)
-    console.print("[bold]Summary[/]")
+    console.print(f"[table.border]{rule}[/]")
+    console.print("[table.header]Summary[/]")
     console.print(f"  Scanned    {len(scans)} IOCs ({n_ip} ip, {n_domain} domain) in {elapsed_ms / 1000:.1f}s")
 
     parts = []

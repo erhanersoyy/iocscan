@@ -31,11 +31,11 @@ PROVIDER_LABELS = {
 }
 
 VERDICT_STYLES = {
-    Verdict.MALICIOUS:  "bold red",
-    Verdict.SUSPICIOUS: "yellow",
-    Verdict.CLEAN:      "green",
-    Verdict.UNKNOWN:    "dim",
-    Verdict.ERROR:      "italic red",
+    Verdict.MALICIOUS:  "verdict.malicious",
+    Verdict.SUSPICIOUS: "verdict.suspicious",
+    Verdict.CLEAN:      "verdict.clean",
+    Verdict.UNKNOWN:    "verdict.unknown",
+    Verdict.ERROR:      "verdict.error",
 }
 
 # Provider score columns whose body is numeric ratio / percent — render
@@ -67,7 +67,7 @@ def _format_verdict_cell(s: ScanResult, *, ascii_only: bool) -> str:
     text = f"[{style}]{glyph} {s.verdict.value}[/] ({s.responding}/{s.total})"
     if s.whitelisted:
         wl = whitelist_glyph(ascii_only=ascii_only)
-        text += f" [dim]{wl} whitelisted[/]"
+        text += f" [verdict.whitelisted]{wl} whitelisted[/]"
     return text
 
 
@@ -75,7 +75,7 @@ def _format_provider_cell(result, *, ascii_only: bool) -> str:
     """Format a single provider result for the wide table."""
     if result.verdict == Verdict.ERROR:
         glyph = (classify_error_ascii if ascii_only else classify_error)(result.error)
-        return f"[italic red]{glyph} {_escape(result.error) if result.error else 'err'}[/]"
+        return f"[verdict.error]{glyph} {_escape(result.error) if result.error else 'err'}[/]"
     if not result.score or result.score == "—":
         # Provider ran but produced no score (blocklist miss, 0 detections).
         cell_no = CELL_NO_RECORD_ASCII if ascii_only else CELL_NO_RECORD
@@ -106,7 +106,7 @@ def _render_wide(scans: list[ScanResult], console: Console, *, ascii_only: bool)
             r = by_name.get(name)
             if r is None:
                 # Provider not applicable to this IOC type.
-                row.append(f"[dim]{cell_na}[/]")
+                row.append(f"[muted]{cell_na}[/]")
             else:
                 row.append(_format_provider_cell(r, ascii_only=ascii_only))
         t.add_row(*row)
@@ -135,11 +135,11 @@ def _render_compact(scans: list[ScanResult], console: Console, *, ascii_only: bo
             label = PROVIDER_LABELS.get(name, name)
             r = by_name.get(name)
             if r is None:
-                lines.append(f"[dim]{label}: {cell_na} n/a[/]")
+                lines.append(f"[muted]{label}: {cell_na} n/a[/]")
             elif r.verdict == Verdict.ERROR:
                 glyph = (classify_error_ascii if ascii_only else classify_error)(r.error)
                 err = _escape(r.error) if r.error else "?"
-                lines.append(f"[italic red]{label}: {glyph} {err}[/]")
+                lines.append(f"[verdict.error]{label}: {glyph} {err}[/]")
             else:
                 style = VERDICT_STYLES[r.verdict]
                 score = _escape(r.score) if r.score and r.score != "—" else cell_no

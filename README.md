@@ -61,6 +61,23 @@ iocscan understands common defanged formats (`evil[.]com`, `1[.]2[.]3[.]4`, `hxx
 
 iocscan renders a **wide** table when the terminal is at least 100 columns and a **compact** table when it isn't. Use `--narrow` to force compact or `--wide` to force wide. Add `--no-color` to disable ANSI colors, `--ascii` to swap Unicode glyphs for `[!]`/`[~]`/`[ ]`/etc. fallbacks (also honors the standard `NO_COLOR` / `FORCE_COLOR` env vars).
 
+### Themes
+
+Four built-in color themes, each WCAG-AA contrast-verified:
+
+| Theme | Best for |
+|---|---|
+| `solarized-dark` (default) | Solarized terminals, dark backgrounds |
+| `forensic` | High-contrast "operations room" feel, projection-ready |
+| `mocha` | Catppuccin Mocha, modern dark terminals |
+| `latte` | Catppuccin Latte, light terminals |
+
+Pick one with `--theme <name>` or set the `IOCSCAN_THEME` env var. Preview every theme with:
+
+```bash
+python -m iocscan --list-themes
+```
+
 ### Verdict glyphs
 
 Every verdict is shown along three channels — **color + glyph + word** — so meaning survives if any one channel drops (NO_COLOR, screen reader, narrow terminal).
