@@ -9,3 +9,18 @@ build/
 .venv/
 .env
 ~/.iocscan/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local Claude Code state
+.claude/
+CLAUDE.md
+
+# Internal scratch
+feature_suggestions.md
+tzf

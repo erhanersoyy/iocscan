@@ -9,12 +9,38 @@ description = "Blue-team CLI: consolidated malicious/clean verdicts for IPs and 
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
-authors = [{name = "n.erhan.ersoy"}]
+authors = [{name = "n.erhan.ersoy", email = "n.erhan.ersoy@gmail.com"}]
+keywords = [
+    "threat-intelligence", "security", "ioc", "blue-team", "soc",
+    "virustotal", "abuseipdb", "otx", "urlhaus", "threatfox",
+    "spamhaus", "feodo", "greynoise", "cybersecurity",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: System :: Networking :: Monitoring",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
 dependencies = [
     "httpx[http2]>=0.27,<0.29",
     "rich>=13.7,<15",
     "tomli-w>=1.0,<2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/erhanersoyy/iocscan"
+Repository = "https://github.com/erhanersoyy/iocscan"
+Issues = "https://github.com/erhanersoyy/iocscan/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -31,3 +57,26 @@ asyncio_mode = "auto"
 markers = ["network: hits live endpoints, skipped by default"]
 addopts = "-ra -m 'not network'"
 testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["iocscan"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "iocscan/",
+    "tests/",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+exclude = [
+    "CLAUDE.md",
+    "SETUP.md",
+    "docs/",
+    ".claude/",
+    ".coverage",
+    "feature_suggestions.md",
+    "tzf",
+    "**/__pycache__",
+    "**/.pytest_cache",
+]
