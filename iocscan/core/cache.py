@@ -39,10 +39,14 @@ class Cache:
         self._conn.execute("PRAGMA busy_timeout=3000")
         self._conn.executescript(SCHEMA)
         self._conn.commit()
-        try:
-            os.chmod(self.path, 0o600)
-        except OSError:
-            pass
+        # WAL mode creates sibling -wal/-shm files; lock those down too so
+        # they don't end up world-readable under a permissive umask.
+        for suffix in ("", "-wal", "-shm"):
+            sibling = self.path.with_name(self.path.name + suffix)
+            try:
+                os.chmod(sibling, 0o600)
+            except OSError:
+                pass
 
     def get(self, ioc: str) -> dict[str, ProviderResult]:
         cutoff = int(time.time()) - self.ttl

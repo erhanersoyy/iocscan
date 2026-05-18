@@ -43,13 +43,12 @@ class Config:
                 "min_coverage": self.min_coverage,
             },
         }
-        tmp = target.with_suffix(".tmp")
+        # with_suffix would strip ".toml"; append instead so an orphaned tmp
+        # from a crashed write is recognisably "<target>.tmp".
+        tmp = target.parent / (target.name + ".tmp")
         fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        try:
-            with os.fdopen(fd, "wb") as f:
-                f.write(tomli_w.dumps(payload).encode("utf-8"))
-        finally:
-            pass  # fd is closed by os.fdopen
+        with os.fdopen(fd, "wb") as f:
+            f.write(tomli_w.dumps(payload).encode("utf-8"))
         os.chmod(tmp, 0o600)
         tmp.replace(target)
         os.chmod(target, 0o600)

@@ -5,7 +5,7 @@ import time
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
+from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
 BASE = "https://otx.alienvault.com/api/v1/indicators"
 
@@ -46,7 +46,3 @@ class OTX(Provider):
         else:
             v = Verdict.CLEAN
         return ProviderResult(self.name, v, f"{count} pulses", data, None, latency)
-
-
-def _err(name, msg, start):
-    return ProviderResult(name, Verdict.ERROR, "", None, msg, int((time.perf_counter() - start) * 1000))

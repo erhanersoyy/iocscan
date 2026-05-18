@@ -192,3 +192,20 @@ async def test_rate_limiter_does_not_hold_lock_during_sleep():
     # Total elapsed should be ~400ms, not ~600ms (which would happen if locks chained)
     assert timestamps[2] - timestamps[0] < 0.55, \
         f"total elapsed {timestamps[2] - timestamps[0]:.3f}s suggests chained locks"
+
+
+async def test_scan_propagates_asyncio_cancelled_error():
+    """CancelledError must propagate so event-loop cancellation works."""
+    import asyncio
+
+    class CancelledProvider(Provider):
+        name = "cancelled"
+        supports = {IOCType.IP}
+        requires_key = False
+
+        async def lookup(self, ioc, ioc_type, client, config):
+            raise asyncio.CancelledError()
+
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(asyncio.CancelledError):
+            await scan_ioc("1.1.1.1", IOCType.IP, [CancelledProvider()], client, Config())

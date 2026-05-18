@@ -6,7 +6,7 @@ import time
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
+from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
 ENDPOINT = "https://check.torproject.org/torbulkexitlist"
 _CACHE: dict[str, set[str]] = {}
@@ -73,10 +73,6 @@ class Tor(Provider):
                 _CACHE["data"] = exits
                 _CACHE_TS["data"] = now
                 return exits
-            except Exception:
+            except (httpx.HTTPError, ValueError, UnicodeDecodeError):
                 _FAILED_UNTIL["ts"] = loop.time() + _FAILURE_TTL
                 raise
-
-
-def _err(name, msg, start):
-    return ProviderResult(name, Verdict.ERROR, "", None, msg, int((time.perf_counter() - start) * 1000))
