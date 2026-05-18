@@ -5,7 +5,7 @@ import time
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
+from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
 ENDPOINT = "https://urlhaus-api.abuse.ch/v1/host/"
 
@@ -25,7 +25,7 @@ class URLhaus(Provider):
         try:
             resp = await client.post(ENDPOINT, data={"host": ioc}, headers=headers)
         except httpx.HTTPError as e:
-            return self._err(f"network: {e.__class__.__name__}", start)
+            return _err(self.name, f"network: {e.__class__.__name__}", start)
         latency = int((time.perf_counter() - start) * 1000)
         if resp.status_code == 429:
             return ProviderResult(self.name, Verdict.ERROR, "", None, "429 rate limit", latency)
@@ -45,7 +45,3 @@ class URLhaus(Provider):
                 self.name, Verdict.MALICIOUS, f"{url_count} urls", data, None, latency
             )
         return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency)
-
-    def _err(self, msg: str, start: float) -> ProviderResult:
-        latency = int((time.perf_counter() - start) * 1000)
-        return ProviderResult(self.name, Verdict.ERROR, "", None, msg, latency)

@@ -7,7 +7,7 @@ import time
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
+from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
 ENDPOINT = "https://www.spamhaus.org/drop/drop.txt"
 _CACHE: dict[str, list[tuple[ipaddress.IPv4Network, str]]] = {}
@@ -92,10 +92,6 @@ class Spamhaus(Provider):
                 _CACHE["data"] = cidrs
                 _CACHE_TS["data"] = now
                 return cidrs
-            except Exception:
+            except (httpx.HTTPError, ValueError, UnicodeDecodeError):
                 _FAILED_UNTIL["ts"] = loop.time() + _FAILURE_TTL
                 raise
-
-
-def _err(name, msg, start):
-    return ProviderResult(name, Verdict.ERROR, "", None, msg, int((time.perf_counter() - start) * 1000))
