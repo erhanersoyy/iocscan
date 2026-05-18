@@ -82,6 +82,35 @@ class ScanResult:
     whitelisted: bool = False
 
 
+_VERDICT_SEVERITY = {
+    Verdict.MALICIOUS:  0,
+    Verdict.SUSPICIOUS: 1,
+    Verdict.UNKNOWN:    2,
+    Verdict.CLEAN:      3,
+    Verdict.ERROR:      4,
+}
+
+
+def sort_scans(scans: list[ScanResult], key: str) -> list[ScanResult]:
+    """Return a new list of scans ordered by `key`.
+
+    key='input'    → no-op (caller's order preserved)
+    key='verdict'  → worst verdict first (MALICIOUS > SUSPICIOUS > UNKNOWN > CLEAN)
+    key='coverage' → highest responding/total first (more evidence first)
+    """
+    if key == "input":
+        return list(scans)
+    if key == "verdict":
+        return sorted(scans, key=lambda s: _VERDICT_SEVERITY.get(s.verdict, 99))
+    if key == "coverage":
+        # Use responding count, then ratio as tiebreaker (avoid div by zero).
+        return sorted(
+            scans,
+            key=lambda s: (-s.responding, -(s.responding / s.total if s.total else 0)),
+        )
+    raise ValueError(f"unknown sort key: {key!r}")
+
+
 async def scan_ioc(
     ioc: str,
     ioc_type: IOCType,

@@ -121,3 +121,47 @@ def test_cli_help_includes_security_warning_for_api_keys(tmp_home):
 
     # Check that epilog includes the security note
     assert "Security note" in help_output or "INSECURE" in help_output
+
+
+# --- PR #3 workflow flags: --quiet, --defang, --sort ---
+
+def test_cli_quiet_emits_tsv_one_line_per_ioc(tmp_home, mock_provider_responses, capsys):
+    rc = main(["--quiet", "8.8.8.8"])
+    out = capsys.readouterr().out
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    assert len(lines) == 1
+    parts = lines[0].split("\t")
+    assert parts[0] == "8.8.8.8"
+    # Second field is the verdict word; third is "responding/total"
+    assert "/" in parts[2]
+
+
+def test_cli_quiet_with_defang_defangs_ioc(tmp_home, mock_provider_responses, capsys):
+    rc = main(["--quiet", "--defang", "8.8.8.8"])
+    out = capsys.readouterr().out
+    assert "8[.]8[.]8[.]8" in out
+
+
+def test_cli_defang_table_renders_defanged_ioc(tmp_home, mock_provider_responses, capsys):
+    rc = main(["--defang", "8.8.8.8"])
+    out = capsys.readouterr().out
+    # Table view: defanged form must appear
+    assert "8[.]8[.]8[.]8" in out
+
+
+def test_cli_sort_verdict_with_quiet(tmp_home, mock_provider_responses, capsys):
+    """--sort verdict should reorder TSV output worst-first.
+
+    With mock providers everything is CLEAN so order is by appearance, but
+    verify the flag is accepted and produces output.
+    """
+    rc = main(["--quiet", "--sort", "verdict", "1.1.1.1", "8.8.8.8"])
+    out = capsys.readouterr().out
+    assert "1.1.1.1" in out and "8.8.8.8" in out
+    assert rc == 0
+
+
+def test_cli_unknown_sort_key_is_rejected(tmp_home, capsys):
+    # argparse choices reject unknown values before reaching scan logic
+    with pytest.raises(SystemExit):
+        main(["--sort", "weird", "8.8.8.8"])

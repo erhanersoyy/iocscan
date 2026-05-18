@@ -42,3 +42,27 @@ def test_parse_iocs_returns_warnings_for_invalid():
     parsed, warnings = parse_iocs(["1.2.3.4", "garbage"], return_warnings=True)
     assert parsed == [("1.2.3.4", IOCType.IP)]
     assert "garbage" in warnings[0]
+
+
+# --- to_defanged + round-trip with refang (existing defang) ---
+
+from iocscan.core.ioc import to_defanged, defang
+
+
+def test_to_defanged_replaces_all_dots():
+    assert to_defanged("evil.com") == "evil[.]com"
+    assert to_defanged("sub.evil.com") == "sub[.]evil[.]com"
+    assert to_defanged("1.2.3.4") == "1[.]2[.]3[.]4"
+
+
+def test_to_defanged_no_dots_unchanged():
+    assert to_defanged("localhost") == "localhost"
+
+
+def test_defang_to_defanged_round_trip():
+    """Refanging a previously defanged string returns the canonical form."""
+    canonical = "1.2.3.4"
+    assert defang(to_defanged(canonical)) == canonical
+
+    canonical = "evil.example.com"
+    assert defang(to_defanged(canonical)) == canonical
