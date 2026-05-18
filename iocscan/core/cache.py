@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -27,9 +28,21 @@ class Cache:
         self.path = Path(path)
         self.ttl = int(ttl_seconds)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(self.path.parent, 0o700)
+        except OSError:
+            pass  # best-effort; e.g., if parent is not owned by us
+        if self.path.is_symlink():
+            raise ValueError(f"refusing to open symlink: {self.path}")
         self._conn = sqlite3.connect(self.path)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=3000")
         self._conn.executescript(SCHEMA)
         self._conn.commit()
+        try:
+            os.chmod(self.path, 0o600)
+        except OSError:
+            pass
 
     def get(self, ioc: str) -> dict[str, ProviderResult]:
         cutoff = int(time.time()) - self.ttl

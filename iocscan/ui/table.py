@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from rich.console import Console
+from rich.markup import escape as _escape
 from rich.table import Table
 
 from iocscan.core.scan import ScanResult
@@ -38,17 +39,17 @@ def _render_wide(scans: list[ScanResult], console: Console) -> None:
         verdict_text = f"[{VERDICT_STYLES[s.verdict]}]{s.verdict.value}[/] ({s.responding}/{s.total})"
         if s.whitelisted:
             verdict_text += " [dim](whitelisted)[/]"
-        row = [s.ioc, s.ioc_type.value, verdict_text]
+        row = [_escape(s.ioc), s.ioc_type.value, verdict_text]
         by_name = {r.provider: r for r in s.provider_results}
         for name in PROVIDER_ORDER:
             r = by_name.get(name)
             if r is None:
                 row.append("—")
             elif r.verdict == Verdict.ERROR:
-                row.append(f"[italic red]err: {r.error or '?'}[/]")
+                row.append(f"[italic red]err: {_escape(r.error) if r.error else '?'}[/]")
             else:
                 style = VERDICT_STYLES[r.verdict]
-                row.append(f"[{style}]{r.score or '—'}[/]")
+                row.append(f"[{style}]{_escape(r.score) if r.score else '—'}[/]")
         t.add_row(*row)
     console.print(t)
 
@@ -66,8 +67,8 @@ def _render_compact(scans: list[ScanResult], console: Console) -> None:
         details = []
         for r in s.provider_results:
             if r.verdict == Verdict.MALICIOUS or r.verdict == Verdict.SUSPICIOUS:
-                details.append(f"{r.provider}:{r.score}")
+                details.append(f"{r.provider}:{_escape(r.score or '')}")
             elif r.verdict == Verdict.ERROR:
                 details.append(f"{r.provider}:err")
-        t.add_row(s.ioc, s.ioc_type.value, verdict_text, " | ".join(details) or "—")
+        t.add_row(_escape(s.ioc), s.ioc_type.value, verdict_text, " | ".join(details) or "—")
     console.print(t)

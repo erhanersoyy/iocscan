@@ -106,3 +106,18 @@ def test_cli_cache_merge_applies_whitelist(tmp_home, mock_provider_responses, mo
     data = json.loads(out)
     assert data["results"][0]["whitelisted"] is True
     assert data["results"][0]["verdict"] == "clean"  # not malicious despite VT+OTX cached
+
+
+def test_cli_help_includes_security_warning_for_api_keys(tmp_home):
+    """Test that --help output warns about insecure CLI API key flags."""
+    from iocscan.cli import _build_scan_parser
+
+    parser = _build_scan_parser()
+    help_output = parser.format_help()
+
+    # Check that the help output mentions INSECURE or config set for at least one key flag
+    assert "INSECURE" in help_output or "config set" in help_output, \
+        "Help output should warn about insecure CLI key flags"
+
+    # Check that epilog includes the security note
+    assert "Security note" in help_output or "INSECURE" in help_output
