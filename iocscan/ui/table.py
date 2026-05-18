@@ -69,12 +69,20 @@ def _render_compact(scans: list[ScanResult], console: Console) -> None:
         verdict_text = f"[{VERDICT_STYLES[s.verdict]}]{s.verdict.value}[/] ({s.responding}/{s.total})"
         if s.whitelisted:
             verdict_text += " [dim](whitelisted)[/]"
-        details = []
-        for r in s.provider_results:
-            label = PROVIDER_LABELS.get(r.provider, r.provider)
-            if r.verdict == Verdict.MALICIOUS or r.verdict == Verdict.SUSPICIOUS:
-                details.append(f"{label}:{_escape(r.score or '')}")
+        by_name = {r.provider: r for r in s.provider_results}
+        lines = []
+        for name in PROVIDER_ORDER:
+            label = PROVIDER_LABELS.get(name, name)
+            r = by_name.get(name)
+            if r is None:
+                # Provider not applicable to this IOC type (e.g. IP-only on a domain)
+                lines.append(f"[dim]{label}: n/a[/]")
             elif r.verdict == Verdict.ERROR:
-                details.append(f"{label}:err")
-        t.add_row(_escape(s.ioc), verdict_text, " | ".join(details) or "—")
+                err = _escape(r.error) if r.error else "?"
+                lines.append(f"[italic red]{label}: err ({err})[/]")
+            else:
+                style = VERDICT_STYLES[r.verdict]
+                score = _escape(r.score) if r.score else "—"
+                lines.append(f"[{style}]{label}: {score}[/]")
+        t.add_row(_escape(s.ioc), verdict_text, "\n".join(lines))
     console.print(t)

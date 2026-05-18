@@ -55,8 +55,21 @@ def test_table_shows_coverage_in_verdict_cell():
 
 def test_narrow_mode_uses_compact_layout():
     out = _render([_scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)], narrow=True)
-    assert "urlhaus" in out or "—" in out
-    assert "greynoise" not in out or "|" in out
+    assert "urlhaus" in out
+    # Compact mode now lists every provider on its own line, in PROVIDER_ORDER
+    assert "greynoise" in out
+
+
+def test_narrow_mode_lists_all_nine_providers_in_order():
+    """Compact layout shows every provider, one per line, in PROVIDER_ORDER."""
+    out = _render([_scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN, otx=Verdict.CLEAN)], narrow=True)
+    # All 9 provider labels (using display labels) must appear
+    expected_labels = ["urlhaus", "threatfox", "feodo", "tor", "spamhaus",
+                       "vt", "abuseip", "otx", "greynoise"]
+    positions = [out.find(label) for label in expected_labels]
+    assert all(p >= 0 for p in positions), f"Missing labels: {[l for l, p in zip(expected_labels, positions) if p < 0]}"
+    # Positions must be strictly increasing (i.e. labels appear in PROVIDER_ORDER)
+    assert positions == sorted(positions), "Provider labels are not in PROVIDER_ORDER"
 
 
 # ---------------------------------------------------------------------------
