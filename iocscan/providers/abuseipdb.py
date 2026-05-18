@@ -5,7 +5,7 @@ import time
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
+from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
 ENDPOINT = "https://api.abuseipdb.com/api/v2/check"
 
@@ -51,7 +51,3 @@ class AbuseIPDB(Provider):
         else:
             v = Verdict.CLEAN
         return ProviderResult(self.name, v, f"{score}%", data, None, latency)
-
-
-def _err(name, msg, start):
-    return ProviderResult(name, Verdict.ERROR, "", None, msg, int((time.perf_counter() - start) * 1000))

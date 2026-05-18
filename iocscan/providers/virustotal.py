@@ -5,7 +5,7 @@ import time
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
+from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
 BASE = "https://www.virustotal.com/api/v3"
 
@@ -53,7 +53,3 @@ class VirusTotal(Provider):
         else:
             v = Verdict.CLEAN
         return ProviderResult(self.name, v, score, data, None, latency)
-
-
-def _err(name, msg, start):
-    return ProviderResult(name, Verdict.ERROR, "", None, msg, int((time.perf_counter() - start) * 1000))

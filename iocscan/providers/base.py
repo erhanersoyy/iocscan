@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -47,3 +48,9 @@ class Provider(ABC):
 
     def has_key(self, config: "Config") -> bool:
         return not self.requires_key or bool(config.key_for(self.name))
+
+
+def err_result(name: str, msg: str, start: float) -> ProviderResult:
+    """Build an ERROR ProviderResult with the elapsed latency since `start`."""
+    latency = int((time.perf_counter() - start) * 1000)
+    return ProviderResult(name, Verdict.ERROR, "", None, msg, latency)

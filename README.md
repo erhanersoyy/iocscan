@@ -5,18 +5,22 @@
 
 Blue-team CLI that produces a consolidated `malicious / suspicious / clean / unknown` verdict for IP addresses and domains by querying **nine** open-source threat-intelligence providers in parallel.
 
-Four providers work out of the box (no API key). Five more activate when you add free-tier API keys. A typical scan completes in 3–5 seconds.
+Four providers work out of the box (no API key). Five more activate when you add free-tier API keys.
 
 ---
 
-## Why iocscan
+## Basic features and infrastructure
 
-- **Honest verdicts.** If too few providers respond, the verdict is `unknown` — never falsely "clean".
-- **Authoritative blocklist short-circuit.** A single hit on Spamhaus DROP or Feodo Tracker yields `malicious` regardless of votes.
-- **Critical-infra whitelist.** Bundled list of ~40 high-traffic domains (Google, Cloudflare, GitHub, …) plus optional Tranco top-1K override false positives.
-- **Fast.** All providers fire in parallel with per-provider rate limiting.
-- **SOAR-friendly.** `--json` output + documented exit codes for pipelines.
-- **Local cache.** 24h SQLite cache; bulk feeds (Spamhaus, Feodo, Tor) are downloaded once per process.
+- **Nine providers in parallel.** A typical scan finishes in 3–5 seconds.
+- **Honest verdicts.** Returns `unknown` when fewer than three providers respond — never falsely "clean".
+- **Authoritative override.** A single hit on Spamhaus DROP or Feodo Tracker forces a `malicious` verdict.
+- **Weighted voting.** ≥30% threshold; VirusTotal and OTX count as 2, others as 1.
+- **Whitelist override.** ~40 bundled critical-infra domains plus the optional Tranco top-1K clamp false positives back to `clean`.
+- **Defanged input.** Understands `evil[.]com`, `hxxps://...`, and bare URLs.
+- **Local cache.** 24h SQLite cache at `~/.iocscan/cache.db`; bulk feeds (Spamhaus, Feodo, Tor) fetched once per process.
+- **Rate limited.** Per-provider asyncio limiters keep you inside free-tier quotas.
+- **Machine-readable.** `--json` output and stable exit codes (0–5) for pipeline integration.
+- **Local-only secrets.** API keys live in `~/.iocscan/config.toml` (mode 0600, atomic writes).
 
 ---
 
@@ -79,24 +83,6 @@ iocscan renders a **wide** table when the terminal is at least 140 columns and a
 ### Final verdict cell
 
 The `Verdict` column reads e.g. `clean (9/9)` — the value (`clean` / `suspicious` / `malicious` / `unknown`) plus how many providers actually responded out of how many were applicable. A trailing `(whitelisted)` tag means the IOC matched the bundled or Tranco whitelist and any `malicious` / `suspicious` verdict was clamped down to `clean`.
-
-### Compact mode (`--narrow`)
-
-When the table won't fit, every provider is listed on its own line inside the `Details` column, in the same order as the wide columns. Example:
-
-```
-urlhaus: —
-threatfox: —
-feodo: n/a
-tor: n/a
-spamhaus: n/a
-vt: 0/92
-abuseip: n/a
-otx: 50 pulses
-greynoise: n/a
-```
-
-Force compact mode anywhere with `--narrow` if you prefer this layout in a wide terminal.
 
 ---
 
@@ -297,28 +283,6 @@ The cache lives at `~/.iocscan/tranco-1k.txt`. Re-run `update` weekly to keep it
 - **All results say `429 rate limit`** — you're hitting free-tier limits. Wait, or add a key for higher-tier providers (GreyNoise especially).
 - **Exit code 5 (all unknown)** — fewer than 3 providers responded. Add more API keys; see `python -m iocscan providers`.
 - **Verbose troubleshooting** — `python -m iocscan --debug ...` logs each provider call to stderr (no API keys are logged).
-
----
-
-## Development
-
-Same install as above, plus dev extras for tests:
-
-```bash
-pip install -r requirements.txt
-pip install pytest pytest-asyncio pytest-cov
-
-# Run the test suite (network tests are excluded by default)
-pytest tests/ -q
-
-# Include live-network tests (slow, flaky)
-pytest tests/ -q -m network
-
-# Coverage
-pytest --cov=iocscan --cov-report=term-missing
-```
-
-See `CLAUDE.md` for architecture notes (verdict aggregation, provider plugin model, rate limiter, cache semantics).
 
 ---
 

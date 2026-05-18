@@ -7,7 +7,7 @@ import time
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
+from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
 ENDPOINT = "https://feodotracker.abuse.ch/downloads/ipblocklist.json"
 _CACHE: dict[str, dict] = {}
@@ -76,11 +76,6 @@ class Feodo(Provider):
                 _CACHE["data"] = index
                 _CACHE_TS["data"] = now
                 return index
-            except Exception:
+            except (httpx.HTTPError, ValueError, KeyError, TypeError):
                 _FAILED_UNTIL["ts"] = loop.time() + _FAILURE_TTL
                 raise
-
-
-def _err(name: str, msg: str, start: float) -> ProviderResult:
-    latency = int((time.perf_counter() - start) * 1000)
-    return ProviderResult(name, Verdict.ERROR, "", None, msg, latency)

@@ -94,6 +94,10 @@ async def scan_ioc(
     raw = await asyncio.gather(*tasks, return_exceptions=True)
     results: list[ProviderResult] = []
     for provider, item in zip(applicable, raw):
+        if isinstance(item, (KeyboardInterrupt, asyncio.CancelledError, SystemExit)):
+            # Propagate user-driven interrupts and event-loop cancellations
+            # instead of converting them into ERROR rows.
+            raise item
         if isinstance(item, BaseException):
             results.append(ProviderResult(
                 provider.name, Verdict.ERROR, "", None,
