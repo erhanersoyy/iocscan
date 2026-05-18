@@ -64,8 +64,9 @@ anyio, certifi, h11, h2, hpack, httpcore, hyperframe, idna, iniconfig, markdown-
 Sırasıyla:
 
 ```bash
-# Proje klasörünü oluştur
-mkdir -p ~/Programs/iocscan && cd ~/Programs/iocscan
+# Repo'yu klonla
+git clone https://github.com/erhanersoyy/iocscan.git ~/Programs/iocscan
+cd ~/Programs/iocscan
 
 # Python sanal ortamı kur (.venv klasörü oluşur)
 python3 -m venv .venv
@@ -73,19 +74,23 @@ python3 -m venv .venv
 # Sanal ortamı aktive et (her terminal oturumunda yeniden gerekir)
 source .venv/bin/activate
 
-# iocscan'ı editable modda kur (kod değişiklikleri anında yansır)
-.venv/bin/pip install -e ".[dev]"
+# Bağımlılıkları yükle
+pip install -r requirements.txt
 
-# Testleri çalıştır
-.venv/bin/python -m pytest tests/ -q
+# Çalıştırmayı test et
+python -m iocscan --help
 
 # (İsteğe bağlı) API key'lerini config'e ekle
-iocscan config set virustotal AAAAA...
-iocscan config set otx BBBBB...
+python -m iocscan config set virustotal AAAAA...
+python -m iocscan config set otx BBBBB...
 # vs.
 
 # Tranco top-1K whitelist'ini indir (ilk kullanım öncesi)
-iocscan whitelist update
+python -m iocscan whitelist update
+
+# (Geliştirici isen) test araçlarını da yükle ve testleri çalıştır
+pip install pytest pytest-asyncio pytest-cov
+pytest tests/ -q
 ```
 
 ---
@@ -142,7 +147,7 @@ gh repo delete erhanersoyy/iocscan --yes
 ```bash
 ls ~/.iocscan/        # No such file or directory
 ls ~/Programs/iocscan # No such file or directory
-which iocscan         # iocscan not found (sanal ortam silindi)
+.venv/bin/python -m iocscan --help 2>&1 | head -1   # Hata vermeli — .venv yok artık
 ```
 
 Bu üç komut "yok" dediyse: temiz.
