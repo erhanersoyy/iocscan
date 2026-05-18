@@ -63,3 +63,12 @@ def test_iocscan_cache_ttl_env_overrides_file(tmp_home, monkeypatch):
     monkeypatch.setenv("IOCSCAN_CACHE_TTL", "6")
     cfg = load_config()
     assert cfg.cache_ttl_hours == 6
+
+
+def test_iocscan_cache_ttl_malformed_warns(tmp_home, monkeypatch, capsys):
+    monkeypatch.setenv("IOCSCAN_CACHE_TTL", "24h")
+    cfg = load_config()
+    assert cfg.cache_ttl_hours == 24  # default unchanged
+    err = capsys.readouterr().err
+    assert "IOCSCAN_CACHE_TTL" in err
+    assert "24h" in err
