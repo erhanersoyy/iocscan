@@ -33,7 +33,8 @@ class Config:
     def set_key(self, provider: str, value: str) -> None:
         self.keys[provider] = value
         target = self.path or _default_path()
-        target.parent.mkdir(parents=True, exist_ok=True)
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(target.parent, 0o700)
         payload = {
             "providers": dict(self.keys),
             "settings": {
@@ -43,7 +44,12 @@ class Config:
             },
         }
         tmp = target.with_suffix(".tmp")
-        tmp.write_bytes(tomli_w.dumps(payload).encode("utf-8"))
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(tomli_w.dumps(payload).encode("utf-8"))
+        finally:
+            pass  # fd is closed by os.fdopen
         os.chmod(tmp, 0o600)
         tmp.replace(target)
         os.chmod(target, 0o600)

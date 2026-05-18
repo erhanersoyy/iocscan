@@ -1,4 +1,6 @@
 import os
+import stat
+import unittest.mock
 import pytest
 
 from iocscan.core.config import Config, load_config
@@ -72,3 +74,33 @@ def test_iocscan_cache_ttl_malformed_warns(tmp_home, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "IOCSCAN_CACHE_TTL" in err
     assert "24h" in err
+
+
+def test_set_key_directory_mode_is_0700(tmp_home):
+    """Config directory must be created/fixed to 0o700 (owner-only access)."""
+    cfg = load_config()
+    cfg.set_key("virustotal", "ABC123")
+    parent = tmp_home / ".iocscan"
+    dir_mode = stat.S_IMODE(parent.stat().st_mode)
+    assert dir_mode == 0o700, (
+        f"Expected config dir mode 0o700, got {oct(dir_mode)}"
+    )
+
+
+def test_set_key_tmp_file_never_world_readable(tmp_home):
+    """os.open must be used so the tmp file is born 0o600, not chmod'd after."""
+    opened_modes: list[int] = []
+    real_os_open = os.open
+
+    def recording_open(path, flags, mode=0o777, **kwargs):
+        opened_modes.append(mode)
+        return real_os_open(path, flags, mode, **kwargs)
+
+    with unittest.mock.patch("os.open", side_effect=recording_open):
+        cfg = load_config()
+        cfg.set_key("virustotal", "ABC123")
+
+    # At least one os.open call should have been made with mode 0o600
+    assert any(m == 0o600 for m in opened_modes), (
+        f"Expected os.open called with mode=0o600, got modes: {[oct(m) for m in opened_modes]}"
+    )
