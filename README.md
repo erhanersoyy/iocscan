@@ -59,7 +59,7 @@ iocscan understands common defanged formats (`evil[.]com`, `1[.]2[.]3[.]4`, `hxx
 
 ## Reading the output
 
-iocscan renders a **wide** table when the terminal is at least 140 columns and a **compact** table (or with `--narrow`) when it isn't. Both layouts use the same symbols and colors.
+iocscan renders a **wide** table when the terminal is at least 100 columns and a **compact** table when it isn't. Use `--narrow` to force compact, or `--wide` to force wide regardless of terminal width. Both layouts use the same symbols and colors.
 
 ### Symbols
 

@@ -56,6 +56,7 @@ def _build_scan_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-cache", action="store_true", help="bypass cache for this run")
     p.add_argument("--debug", action="store_true", help="verbose stderr (HTTP, errors)")
     p.add_argument("--narrow", action="store_true", help="force compact table layout")
+    p.add_argument("--wide", action="store_true", help="force wide table layout (overrides terminal-width auto-detect)")
     p.add_argument("--abusech-key", help="Abuse.ch API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_ABUSECH_KEY env var)")
     p.add_argument("--vt-key", help="VirusTotal API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_VT_KEY env var)")
     p.add_argument("--abuseipdb-key", help="AbuseIPDB API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_ABUSEIPDB_KEY env var)")
@@ -106,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
         args.no_cache = False
         args.debug = False
         args.narrow = False
+        args.wide = False
         args.abusech_key = None
         args.vt_key = None
         args.abuseipdb_key = None
@@ -183,7 +185,7 @@ async def _run_scan(parsed, config, args) -> int:
         if args.json:
             print(render_json(scans, min_coverage=config.min_coverage))
         else:
-            render_table(scans, Console(), narrow=args.narrow)
+            render_table(scans, Console(), narrow=args.narrow, wide=args.wide)
 
         has_malicious = any(s.verdict == Verdict.MALICIOUS for s in scans)
         has_suspicious = any(s.verdict == Verdict.SUSPICIOUS for s in scans)
