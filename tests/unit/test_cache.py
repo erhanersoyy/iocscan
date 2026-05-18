@@ -58,3 +58,48 @@ def test_cache_stats_includes_size_and_oldest(tmp_home):
     stats = c.stats()
     assert "size_bytes" in stats and stats["size_bytes"] > 0
     assert "oldest_epoch" in stats and stats["oldest_epoch"] > 0
+
+
+# --- Security hardening tests (Findings #1b, #8, #9, #10) ---
+
+import os
+import stat
+from pathlib import Path
+
+
+def test_cache_directory_mode_is_0700(tmp_path):
+    """Finding #1b: cache parent directory must be restricted to owner-only (0o700)."""
+    db_path = tmp_path / "subdir" / "cache.db"
+    c = Cache(db_path, ttl_seconds=60)
+    c.close()
+    mode = stat.S_IMODE(os.stat(db_path.parent).st_mode)
+    assert mode == 0o700, f"Expected 0o700, got {oct(mode)}"
+
+
+def test_cache_db_mode_is_0600(tmp_path):
+    """Finding #10: cache.db must be restricted to owner-only read/write (0o600)."""
+    db_path = tmp_path / "cache.db"
+    c = Cache(db_path, ttl_seconds=60)
+    c.close()
+    mode = stat.S_IMODE(os.stat(db_path).st_mode)
+    assert mode == 0o600, f"Expected 0o600, got {oct(mode)}"
+
+
+def test_cache_wal_mode_enabled(tmp_path):
+    """Finding #8: WAL journal mode must be enabled for concurrent access."""
+    db_path = tmp_path / "cache.db"
+    c = Cache(db_path, ttl_seconds=60)
+    row = c._conn.execute("PRAGMA journal_mode").fetchone()
+    c.close()
+    assert row[0] == "wal", f"Expected 'wal', got {row[0]!r}"
+
+
+def test_cache_rejects_symlink(tmp_path):
+    """Finding #9: Cache must refuse to open a symlink at the cache path."""
+    real_file = tmp_path / "real.db"
+    real_file.touch()
+    symlink_path = tmp_path / "cache.db"
+    symlink_path.symlink_to(real_file)
+    import pytest
+    with pytest.raises(ValueError, match="symlink"):
+        Cache(symlink_path, ttl_seconds=60)
