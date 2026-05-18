@@ -5,6 +5,7 @@ from rich.console import Console
 from rich.markup import escape as _escape
 from rich.table import Table
 
+from iocscan.core.ioc import to_defanged
 from iocscan.core.scan import ScanResult
 from iocscan.providers.base import Verdict
 from iocscan.ui.glyph import (
@@ -52,13 +53,18 @@ def render_table(
     narrow: bool = False,
     wide: bool = False,
     ascii_only: bool = False,
+    defang: bool = False,
 ) -> None:
     if wide:
-        _render_wide(scans, console, ascii_only=ascii_only)
+        _render_wide(scans, console, ascii_only=ascii_only, defang=defang)
     elif narrow or console.width < AUTO_NARROW_THRESHOLD:
-        _render_compact(scans, console, ascii_only=ascii_only)
+        _render_compact(scans, console, ascii_only=ascii_only, defang=defang)
     else:
-        _render_wide(scans, console, ascii_only=ascii_only)
+        _render_wide(scans, console, ascii_only=ascii_only, defang=defang)
+
+
+def _display_ioc(ioc: str, *, defang: bool) -> str:
+    return to_defanged(ioc) if defang else ioc
 
 
 def _format_verdict_cell(s: ScanResult, *, ascii_only: bool) -> str:
@@ -83,7 +89,7 @@ def _format_provider_cell(result, *, ascii_only: bool) -> str:
     return f"[{VERDICT_STYLES[result.verdict]}]{_escape(result.score)}[/]"
 
 
-def _render_wide(scans: list[ScanResult], console: Console, *, ascii_only: bool) -> None:
+def _render_wide(scans: list[ScanResult], console: Console, *, ascii_only: bool, defang: bool) -> None:
     t = Table(
         box=box.HEAVY_HEAD,
         show_header=True,
@@ -100,7 +106,7 @@ def _render_wide(scans: list[ScanResult], console: Console, *, ascii_only: bool)
     cell_na = CELL_NA_ASCII if ascii_only else CELL_NA
 
     for s in scans:
-        row = [_escape(s.ioc), _format_verdict_cell(s, ascii_only=ascii_only)]
+        row = [_escape(_display_ioc(s.ioc, defang=defang)), _format_verdict_cell(s, ascii_only=ascii_only)]
         by_name = {r.provider: r for r in s.provider_results}
         for name in PROVIDER_ORDER:
             r = by_name.get(name)
@@ -113,7 +119,7 @@ def _render_wide(scans: list[ScanResult], console: Console, *, ascii_only: bool)
     console.print(t)
 
 
-def _render_compact(scans: list[ScanResult], console: Console, *, ascii_only: bool) -> None:
+def _render_compact(scans: list[ScanResult], console: Console, *, ascii_only: bool, defang: bool) -> None:
     t = Table(
         box=box.HEAVY_HEAD,
         show_header=True,
@@ -144,5 +150,5 @@ def _render_compact(scans: list[ScanResult], console: Console, *, ascii_only: bo
                 style = VERDICT_STYLES[r.verdict]
                 score = _escape(r.score) if r.score and r.score != "—" else cell_no
                 lines.append(f"[{style}]{label}: {score}[/]")
-        t.add_row(_escape(s.ioc), verdict_text, "\n".join(lines))
+        t.add_row(_escape(_display_ioc(s.ioc, defang=defang)), verdict_text, "\n".join(lines))
     console.print(t)
