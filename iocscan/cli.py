@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 
 import httpx
-from rich.console import Console
 
 from iocscan.core.cache import Cache
 from iocscan.core.config import load_config
@@ -17,6 +16,8 @@ from iocscan.core.scan import ScanResult, _apply_whitelist, scan_ioc
 from iocscan.core.verdict import aggregate, coverage
 from iocscan.providers import ALL_PROVIDERS
 from iocscan.providers.base import ProviderResult, Verdict
+from iocscan.ui.console import make_console
+from iocscan.ui.footer import render_summary
 from iocscan.ui.json_out import render_json
 from iocscan.ui.table import render_table
 
@@ -57,6 +58,8 @@ def _build_scan_parser() -> argparse.ArgumentParser:
     p.add_argument("--debug", action="store_true", help="verbose stderr (HTTP, errors)")
     p.add_argument("--narrow", action="store_true", help="force compact table layout")
     p.add_argument("--wide", action="store_true", help="force wide table layout (overrides terminal-width auto-detect)")
+    p.add_argument("--no-color", action="store_true", help="disable ANSI colors (equivalent to NO_COLOR=1)")
+    p.add_argument("--ascii", action="store_true", help="use ASCII glyphs ([!], [~], [ ], …) instead of Unicode")
     p.add_argument("--abusech-key", help="Abuse.ch API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_ABUSECH_KEY env var)")
     p.add_argument("--vt-key", help="VirusTotal API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_VT_KEY env var)")
     p.add_argument("--abuseipdb-key", help="AbuseIPDB API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_ABUSEIPDB_KEY env var)")
@@ -108,6 +111,8 @@ def main(argv: list[str] | None = None) -> int:
         args.debug = False
         args.narrow = False
         args.wide = False
+        args.no_color = False
+        args.ascii = False
         args.abusech_key = None
         args.vt_key = None
         args.abuseipdb_key = None
@@ -163,13 +168,21 @@ def main(argv: list[str] | None = None) -> int:
 
 
 async def _run_scan(parsed, config, args) -> int:
+    import time
     cache_path = Path(os.path.expanduser("~")) / ".iocscan" / "cache.db"
     cache = None if args.no_cache else Cache(cache_path, ttl_seconds=config.cache_ttl_hours * 3600)
+    cache_hits = 0
+    cache_fresh = 0
+    start_wall = time.perf_counter()
     try:
         scans = []
         async with _make_client(config.timeout_seconds) as client:
             for ioc, ioc_type in parsed:
                 cached = cache.get(ioc) if cache else {}
+                if cached:
+                    cache_hits += 1
+                else:
+                    cache_fresh += 1
                 providers_to_query = [p for p in ALL_PROVIDERS if p.name not in cached]
                 scan = await scan_ioc(ioc, ioc_type, providers_to_query, client, config)
                 if cached:
@@ -182,10 +195,7 @@ async def _run_scan(parsed, config, args) -> int:
                     cache.put(ioc, scan.provider_results)
                 scans.append(scan)
 
-        if args.json:
-            print(render_json(scans, min_coverage=config.min_coverage))
-        else:
-            render_table(scans, Console(), narrow=args.narrow, wide=args.wide)
+        elapsed_ms = int((time.perf_counter() - start_wall) * 1000)
 
         has_malicious = any(s.verdict == Verdict.MALICIOUS for s in scans)
         has_suspicious = any(s.verdict == Verdict.SUSPICIOUS for s in scans)
@@ -194,16 +204,30 @@ async def _run_scan(parsed, config, args) -> int:
             all(r.verdict == Verdict.ERROR for r in s.provider_results)
             for s in scans
         )
-
         if all_errors:
-            return 4
-        if has_malicious:
-            return 1
-        if has_suspicious:
-            return 2
-        if all_unknown:
-            return 5
-        return 0
+            exit_code = 4
+        elif has_malicious:
+            exit_code = 1
+        elif has_suspicious:
+            exit_code = 2
+        elif all_unknown:
+            exit_code = 5
+        else:
+            exit_code = 0
+
+        if args.json:
+            print(render_json(scans, min_coverage=config.min_coverage))
+        else:
+            console = make_console(no_color=args.no_color, ascii_only=args.ascii)
+            render_table(scans, console, narrow=args.narrow, wide=args.wide, ascii_only=args.ascii)
+            if console.is_terminal and len(scans) > 0:
+                render_summary(
+                    scans, elapsed_ms, exit_code, console,
+                    cache_hits=cache_hits, cache_fresh=cache_fresh,
+                    ascii_only=args.ascii,
+                )
+
+        return exit_code
     finally:
         if cache is not None:
             cache.close()
