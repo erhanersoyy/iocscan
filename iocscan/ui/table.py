@@ -7,7 +7,7 @@ from rich.table import Table
 
 from iocscan.core.ioc import to_defanged
 from iocscan.core.scan import ScanResult
-from iocscan.providers.base import Verdict
+from iocscan.providers.base import Provider, Verdict
 from iocscan.ui.glyph import (
     CELL_NA,
     CELL_NA_ASCII,
@@ -59,13 +59,14 @@ def render_table(
     wide: bool = False,
     ascii_only: bool = False,
     defang: bool = False,
+    providers: list[Provider] | None = None,
 ) -> None:
     if wide:
-        _render_wide(scans, console, ascii_only=ascii_only, defang=defang)
+        _render_wide(scans, console, ascii_only=ascii_only, defang=defang, providers=providers)
     elif narrow or console.width < AUTO_NARROW_THRESHOLD:
-        _render_compact(scans, console, ascii_only=ascii_only, defang=defang)
+        _render_compact(scans, console, ascii_only=ascii_only, defang=defang, providers=providers)
     else:
-        _render_wide(scans, console, ascii_only=ascii_only, defang=defang)
+        _render_wide(scans, console, ascii_only=ascii_only, defang=defang, providers=providers)
 
 
 def _display_ioc(ioc: str, *, defang: bool) -> str:
@@ -82,19 +83,32 @@ def _format_verdict_cell(s: ScanResult, *, ascii_only: bool) -> str:
     return text
 
 
-def _format_provider_cell(result, *, ascii_only: bool) -> str:
-    """Format a single provider result for the wide table."""
+def _format_provider_cell(result, *, ascii_only: bool, permalink: str | None = None) -> str:
+    """Format a single provider result for the wide table.
+
+    When ``permalink`` is supplied, wrap the cell in rich's ``[link=URL]…[/link]``
+    markup so capable terminals emit an OSC 8 hyperlink. The URL is left as-is
+    (provider templates use only ASCII-safe URL-encoded characters; ``]`` would
+    break rich markup, so callers must keep templates clean).
+    """
     if result.verdict == Verdict.ERROR:
         glyph = (classify_error_ascii if ascii_only else classify_error)(result.error)
-        return f"[verdict.error]{glyph} {_escape(result.error) if result.error else 'err'}[/]"
-    if not result.score or result.score == "—":
+        body = f"[verdict.error]{glyph} {_escape(result.error) if result.error else 'err'}[/]"
+    elif not result.score or result.score == "—":
         # Provider ran but produced no score (blocklist miss, 0 detections).
         cell_no = CELL_NO_RECORD_ASCII if ascii_only else CELL_NO_RECORD
-        return f"[{VERDICT_STYLES[result.verdict]}]{cell_no}[/]"
-    return f"[{VERDICT_STYLES[result.verdict]}]{_escape(result.score)}[/]"
+        body = f"[{VERDICT_STYLES[result.verdict]}]{cell_no}[/]"
+    else:
+        body = f"[{VERDICT_STYLES[result.verdict]}]{_escape(result.score)}[/]"
+    if permalink:
+        return f"[link={permalink}]{body}[/link]"
+    return body
 
 
-def _render_wide(scans: list[ScanResult], console: Console, *, ascii_only: bool, defang: bool) -> None:
+def _render_wide(
+    scans: list[ScanResult], console: Console, *, ascii_only: bool, defang: bool,
+    providers: list[Provider] | None = None,
+) -> None:
     t = Table(
         box=box.HEAVY_HEAD,
         show_header=True,
@@ -109,6 +123,7 @@ def _render_wide(scans: list[ScanResult], console: Console, *, ascii_only: bool,
         t.add_column(label, justify=justify, overflow="fold")
 
     cell_na = CELL_NA_ASCII if ascii_only else CELL_NA
+    provider_by_name = {p.name: p for p in (providers or [])}
 
     for s in scans:
         row = [_escape(_display_ioc(s.ioc, defang=defang)), _format_verdict_cell(s, ascii_only=ascii_only)]
@@ -119,12 +134,17 @@ def _render_wide(scans: list[ScanResult], console: Console, *, ascii_only: bool,
                 # Provider not applicable to this IOC type.
                 row.append(f"[muted]{cell_na}[/]")
             else:
-                row.append(_format_provider_cell(r, ascii_only=ascii_only))
+                p = provider_by_name.get(name)
+                link = p.permalink(s.ioc, s.ioc_type) if p else None
+                row.append(_format_provider_cell(r, ascii_only=ascii_only, permalink=link))
         t.add_row(*row)
     console.print(t)
 
 
-def _render_compact(scans: list[ScanResult], console: Console, *, ascii_only: bool, defang: bool) -> None:
+def _render_compact(
+    scans: list[ScanResult], console: Console, *, ascii_only: bool, defang: bool,
+    providers: list[Provider] | None = None,
+) -> None:
     t = Table(
         box=box.HEAVY_HEAD,
         show_header=True,
@@ -137,6 +157,7 @@ def _render_compact(scans: list[ScanResult], console: Console, *, ascii_only: bo
 
     cell_na = CELL_NA_ASCII if ascii_only else CELL_NA
     cell_no = CELL_NO_RECORD_ASCII if ascii_only else CELL_NO_RECORD
+    provider_by_name = {p.name: p for p in (providers or [])}
 
     for s in scans:
         verdict_text = _format_verdict_cell(s, ascii_only=ascii_only)
@@ -147,13 +168,19 @@ def _render_compact(scans: list[ScanResult], console: Console, *, ascii_only: bo
             r = by_name.get(name)
             if r is None:
                 lines.append(f"[muted]{label}: {cell_na} n/a[/]")
-            elif r.verdict == Verdict.ERROR:
+                continue
+            if r.verdict == Verdict.ERROR:
                 glyph = (classify_error_ascii if ascii_only else classify_error)(r.error)
                 err = _escape(r.error) if r.error else "?"
-                lines.append(f"[verdict.error]{label}: {glyph} {err}[/]")
+                line = f"[verdict.error]{label}: {glyph} {err}[/]"
             else:
                 style = VERDICT_STYLES[r.verdict]
                 score = _escape(r.score) if r.score and r.score != "—" else cell_no
-                lines.append(f"[{style}]{label}: {score}[/]")
+                line = f"[{style}]{label}: {score}[/]"
+            p = provider_by_name.get(name)
+            link = p.permalink(s.ioc, s.ioc_type) if p else None
+            if link:
+                line = f"[link={link}]{line}[/link]"
+            lines.append(line)
         t.add_row(_escape(_display_ioc(s.ioc, defang=defang)), verdict_text, "\n".join(lines))
     console.print(t)

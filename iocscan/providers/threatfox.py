@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from urllib.parse import quote
 
 import httpx
 
@@ -44,3 +45,6 @@ class ThreatFox(Provider):
             malware = entry.get("malware", "unknown")
             return ProviderResult(self.name, Verdict.MALICIOUS, malware, data, None, latency)
         return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency)
+
+    def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
+        return f"https://threatfox.abuse.ch/browse.php?search={quote(ioc, safe='')}"

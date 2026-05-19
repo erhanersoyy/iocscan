@@ -48,3 +48,8 @@ class GreyNoise(Provider):
         if classification == "benign":
             return ProviderResult(self.name, Verdict.CLEAN, f"benign: {name}".strip(": "), data, None, latency)
         return ProviderResult(self.name, Verdict.UNKNOWN, classification, data, None, latency)
+
+    def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
+        if ioc_type == IOCType.IP:
+            return f"https://www.greynoise.io/viz/ip/{ioc}"
+        return None

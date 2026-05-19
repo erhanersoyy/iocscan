@@ -64,3 +64,8 @@ class YARAify(Provider):
             if tasks:
                 return ProviderResult(self.name, Verdict.MALICIOUS, "yara match", data, None, latency)
         return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency)
+
+    def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
+        if ioc_type in (IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256):
+            return f"https://yaraify.abuse.ch/sample/{ioc}/"
+        return None

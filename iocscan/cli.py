@@ -104,6 +104,10 @@ def _build_scan_parser() -> argparse.ArgumentParser:
     p.add_argument("--defang", action="store_true", help="render IOCs in defanged form (1.2.3[.]4) in table/JSON/TSV output")
     p.add_argument("--quiet", "-q", action="store_true", help="suppress table + footer; emit TSV one line per IOC (IOC\\tverdict\\tcoverage)")
     p.add_argument(
+        "--links-only", action="store_true",
+        help="emit IOC\\tprovider\\tpermalink TSV (only rows with a permalink); suppresses table/JSON",
+    )
+    p.add_argument(
         "--sort",
         choices=("input", "verdict", "coverage"),
         default="input",
@@ -168,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
         args.list_themes = False
         args.defang = False
         args.quiet = False
+        args.links_only = False
         args.sort = "input"
         args.abusech_key = None
         args.vt_key = None
@@ -305,10 +310,16 @@ async def _run_scan(parsed, config, args) -> int:
             if not args.quiet:
                 print("warning: --json is deprecated; use --format json", file=sys.stderr)
 
+        if args.links_only:
+            _emit_links(scans_out, ALL_PROVIDERS)
+            return exit_code
         if args.quiet:
             _emit_quiet(scans_out, defang=args.defang)
         elif fmt == "json":
-            print(render_json(scans_out, min_coverage=config.min_coverage, defang=args.defang))
+            print(render_json(
+                scans_out, min_coverage=config.min_coverage,
+                defang=args.defang, providers=ALL_PROVIDERS,
+            ))
         elif fmt in EXPORT_FORMATS:
             print(render_export(scans_out, fmt, defang=args.defang))
         else:  # table
@@ -317,6 +328,7 @@ async def _run_scan(parsed, config, args) -> int:
                 scans_out, console,
                 narrow=args.narrow, wide=args.wide,
                 ascii_only=args.ascii, defang=args.defang,
+                providers=ALL_PROVIDERS,
             )
             if console.is_terminal and len(scans_out) > 0:
                 render_summary(
@@ -412,6 +424,19 @@ def _emit_quiet(scans, *, defang: bool) -> None:
     for s in scans:
         ioc = to_defanged(s.ioc) if defang else s.ioc
         print(f"{ioc}\t{s.verdict.value}\t{s.responding}/{s.total}")
+
+
+def _emit_links(scans, providers) -> None:
+    """TSV: IOC\\tprovider\\tpermalink, one row per (IOC, provider) with a permalink."""
+    by_name = {p.name: p for p in providers}
+    for s in scans:
+        for r in s.provider_results:
+            p = by_name.get(r.provider)
+            if p is None:
+                continue
+            link = p.permalink(s.ioc, s.ioc_type)
+            if link:
+                print(f"{s.ioc}\t{p.name}\t{link}")
 
 
 def _cmd_list_themes(args) -> int:
