@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from iocscan.providers.base import IOCType
 
@@ -66,17 +66,30 @@ def to_defanged(s: str) -> str:
     return s.replace(".", "[.]")
 
 
-def _strip_url(s: str) -> str:
-    if "://" in s:
-        parsed = urlparse(s)
-        return parsed.hostname or ""
-    return s
+def _detect_url(refanged: str) -> bool:
+    """True if value is a well-formed http(s) URL with a host."""
+    if "://" not in refanged:
+        return False
+    try:
+        p = urlparse(refanged)
+    except ValueError:
+        return False
+    return p.scheme in ("http", "https") and bool(p.netloc)
 
 
 def detect_type(value: str) -> IOCType | None:
     if not value:
         return None
-    candidate = _strip_url(defang(value)).lower()
+    refanged = defang(value).strip()
+    if _detect_url(refanged):
+        return IOCType.URL
+    # A value containing `://` but failing _detect_url (e.g. non-http scheme,
+    # missing host) is rejected outright rather than falling back to the
+    # legacy "strip scheme, classify host" behavior — that path is now only
+    # for bare IOCs without a scheme.
+    if "://" in refanged:
+        return None
+    candidate = refanged.lower()
     if not candidate:
         return None
     try:
@@ -90,7 +103,15 @@ def detect_type(value: str) -> IOCType | None:
 
 
 def _normalize(value: str) -> str:
-    return _strip_url(defang(value)).lower()
+    refanged = defang(value).strip()
+    if _detect_url(refanged):
+        # RFC 3986: scheme + host are case-insensitive; path / query /
+        # fragment are case-sensitive (e.g. /Resources vs /resources may
+        # be two distinct endpoints). Lowercase only scheme + netloc.
+        p = urlparse(refanged)
+        normalized = p._replace(scheme=p.scheme.lower(), netloc=p.netloc.lower())
+        return urlunparse(normalized)
+    return refanged.lower()
 
 
 def parse_iocs(
