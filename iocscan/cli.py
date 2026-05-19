@@ -70,7 +70,7 @@ def _read_inputs(args) -> list[str]:
     return items
 
 
-_SUBCOMMANDS = {"config", "cache", "providers", "whitelist"}
+_SUBCOMMANDS = {"config", "cache", "providers", "whitelist", "explain"}
 
 
 def _build_scan_parser() -> argparse.ArgumentParser:
@@ -113,6 +113,23 @@ def _build_scan_parser() -> argparse.ArgumentParser:
         default="input",
         help="output order (default: input; verdict = worst-first; coverage = most-evidence-first)",
     )
+    p.add_argument(
+        "--include",
+        default="",
+        help=(
+            "JSON output only: comma-separated dot-paths to keep "
+            "(`*` matches any list index). "
+            "Example: 'results.*.ioc,results.*.verdict'."
+        ),
+    )
+    p.add_argument(
+        "--exclude",
+        default="",
+        help=(
+            "JSON output only: comma-separated dot-paths to drop. "
+            "Applied after --include."
+        ),
+    )
     p.add_argument("--abusech-key", help="Abuse.ch API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_ABUSECH_KEY env var)")
     p.add_argument("--vt-key", help="VirusTotal API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_VT_KEY env var)")
     p.add_argument("--abuseipdb-key", help="AbuseIPDB API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_ABUSEIPDB_KEY env var)")
@@ -141,6 +158,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     cache_sub.add_parser("stats")
 
     sub.add_parser("providers", help="list providers and their status")
+
+    explain_p = sub.add_parser(
+        "explain",
+        help="explain verdict for one IOC (per-provider rationale + math)",
+    )
+    explain_p.add_argument("ioc", help="single IOC to explain")
 
     wl_p = sub.add_parser("whitelist", help="manage Tranco top-1K whitelist cache")
     wl_sub = wl_p.add_subparsers(dest="wl_cmd")
@@ -174,6 +197,8 @@ def main(argv: list[str] | None = None) -> int:
         args.quiet = False
         args.links_only = False
         args.sort = "input"
+        args.include = ""
+        args.exclude = ""
         args.abusech_key = None
         args.vt_key = None
         args.abuseipdb_key = None
@@ -214,6 +239,9 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_providers(config)
     if args.cmd == "whitelist":
         return _cmd_whitelist(args)
+    if args.cmd == "explain":
+        from iocscan.explain import explain_main
+        return explain_main(args, config)
     if args.list_themes:
         return _cmd_list_themes(args)
 
@@ -316,10 +344,18 @@ async def _run_scan(parsed, config, args) -> int:
         if args.quiet:
             _emit_quiet(scans_out, defang=args.defang)
         elif fmt == "json":
-            print(render_json(
+            payload_str = render_json(
                 scans_out, min_coverage=config.min_coverage,
                 defang=args.defang, providers=ALL_PROVIDERS,
-            ))
+            )
+            inc = [s.strip() for s in args.include.split(",") if s.strip()]
+            exc = [s.strip() for s in args.exclude.split(",") if s.strip()]
+            if inc or exc:
+                import json as _json
+                from iocscan.ui.field_filter import apply_filter
+                payload = _json.loads(payload_str)
+                payload_str = _json.dumps(apply_filter(payload, inc, exc), indent=2)
+            print(payload_str)
         elif fmt in EXPORT_FORMATS:
             print(render_export(scans_out, fmt, defang=args.defang))
         else:  # table

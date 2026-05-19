@@ -335,3 +335,52 @@ def test_cli_links_only_skips_providers_without_permalink(tmp_home, mock_provide
     out = capsys.readouterr().out
     for offender in ("feodo", "spamhaus", "\ttor\t"):
         assert offender not in out
+
+
+def test_cli_include_filter_keeps_only_specified_paths(tmp_home, mock_provider_responses, capsys):
+    """--include drops every key not on the include list."""
+    rc = main([
+        "--format", "json",
+        "--include", "results.*.ioc,results.*.verdict",
+        "--no-cache",
+        "1.2.3.4",
+    ])
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    # `scan` block stripped, only `results` survives.
+    assert "scan" not in payload
+    r = payload["results"][0]
+    assert set(r.keys()) <= {"ioc", "verdict"}
+    assert r["ioc"] == "1.2.3.4"
+
+
+def test_cli_exclude_filter_drops_paths(tmp_home, mock_provider_responses, capsys):
+    """--exclude removes the listed sub-trees but keeps everything else."""
+    rc = main([
+        "--format", "json",
+        "--exclude", "results.*.providers",
+        "--no-cache",
+        "1.2.3.4",
+    ])
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert "providers" not in payload["results"][0]
+    # Other top-level fields stay.
+    assert payload["results"][0]["ioc"] == "1.2.3.4"
+    assert "verdict" in payload["results"][0]
+
+
+def test_cli_include_exclude_compose(tmp_home, mock_provider_responses, capsys):
+    """--include picks the subtree, then --exclude prunes from within it."""
+    rc = main([
+        "--format", "json",
+        "--include", "results.*.ioc,results.*.verdict,results.*.coverage",
+        "--exclude", "results.*.coverage.total",
+        "--no-cache",
+        "1.2.3.4",
+    ])
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    r = payload["results"][0]
+    assert "responding" in r["coverage"]
+    assert "total" not in r["coverage"]
