@@ -9,21 +9,6 @@ Four providers work out of the box (no API key). Five more activate when you add
 
 ---
 
-## Basic features and infrastructure
-
-- **Nine providers in parallel.** A typical scan finishes in 3–5 seconds.
-- **Honest verdicts.** Returns `unknown` when fewer than three providers respond — never falsely "clean".
-- **Authoritative override.** A single hit on Spamhaus DROP or Feodo Tracker forces a `malicious` verdict.
-- **Weighted voting.** ≥30% threshold; VirusTotal and OTX count as 2, others as 1.
-- **Whitelist override.** ~40 bundled critical-infra domains plus the optional Tranco top-1K clamp false positives back to `clean`.
-- **Defanged input.** Understands `evil[.]com`, `hxxps://...`, and bare URLs.
-- **Local cache.** 24h SQLite cache at `~/.iocscan/cache.db`; bulk feeds (Spamhaus, Feodo, Tor) fetched once per process.
-- **Rate limited.** Per-provider asyncio limiters keep you inside free-tier quotas.
-- **Machine-readable.** `--json` output and stable exit codes (0–5) for pipeline integration.
-- **Local-only secrets.** API keys live in `~/.iocscan/config.toml` (mode 0600, atomic writes).
-
----
-
 ## Install
 
 Requires Python 3.11 or newer.
@@ -288,27 +273,86 @@ echo "login-secure[.]bank-update[.]top" | python -m iocscan
 
 ---
 
-## Exit codes
-
-| Code | Meaning |
-|---|---|
-| 0 | All IOCs clean |
-| 1 | At least one IOC malicious |
-| 2 | At least one IOC suspicious (no malicious) |
-| 3 | Argument / parse error |
-| 4 | All providers failed |
-| 5 | All IOCs unknown (insufficient coverage) |
-
-These are part of the public contract — safe to script against.
-
----
-
 ## Verdict logic (in short)
 
 1. If fewer than `min_coverage` providers (default 3) respond non-error/non-unknown → `unknown`.
 2. If any **authoritative** provider (Spamhaus DROP, Feodo Tracker) returns `malicious` → final `malicious`.
 3. Otherwise weighted vote at ≥30%: VirusTotal and OTX count as 2; others count as 1.
 4. Whitelist override: if the IOC is a bundled-whitelist or Tranco top-1K domain, `malicious`/`suspicious` is clamped to `clean` (and the table marks it as whitelisted).
+
+---
+
+## Project layout
+
+High-level map of the codebase. Each row links a directory to its single responsibility.
+
+| Path | Responsibility |
+|---|---|
+| `iocscan/cli.py` | Argparse entry point + subcommand routing (`scan`, `config`, `cache`, `providers`, `whitelist`); `-f` input safety; output dispatch. |
+| `iocscan/core/scan.py` | Per-IOC orchestration: filters providers by IOC type, rate-limits, `asyncio.gather`s their lookups, returns `ScanResult`. |
+| `iocscan/core/verdict.py` | Aggregates per-provider results into the final verdict (authoritative override → weighted vote → coverage floor). |
+| `iocscan/core/ioc.py` | Parses & validates IOCs; understands defanged forms (`evil[.]com`, `hxxps://...`). |
+| `iocscan/core/config.py` | API key resolution: config file (0600) → env var → CLI flag. |
+| `iocscan/core/cache.py` | SQLite cache at `~/.iocscan/cache.db` (24h TTL, symlink-refusal guard). |
+| `iocscan/core/whitelist.py` + `core/tranco.py` | Bundled critical-infra list + optional Tranco top-1K override. |
+| `iocscan/providers/base.py` | `Provider` ABC, `ProviderResult` dataclass, shared `Verdict`/`IOCType` enums. |
+| `iocscan/providers/<name>.py` | One file per TI source (9 total). Each subclasses `Provider`. |
+| `iocscan/providers/__init__.py` | `ALL_PROVIDERS` registry — the single list `scan.py` iterates. |
+| `iocscan/ui/table.py`, `ui/footer.py`, `ui/json_out.py`, `ui/export.py` | Output renderers: rich table, summary footer, JSON, jsonl/csv/markdown. |
+| `iocscan/ui/themes.py`, `ui/glyph.py`, `ui/console.py` | Theming, verdict glyphs, terminal detection. |
+| `tests/` | pytest suite mirroring the source tree (`unit/`, `providers/`, `cli/`, `integration/`). |
+
+### Data flow (one scan)
+
+```
+CLI args ─► parse_iocs ─► scan_ioc ─┬─► provider.lookup × N (asyncio.gather)
+                                    └─► aggregate_verdict ─► whitelist clamp ─► render
+```
+
+---
+
+## Adding a new provider
+
+A provider is just a Python class that knows how to query one threat-intel source. Four steps:
+
+**1. Create `iocscan/providers/<name>.py`** copying any small provider (e.g. `abuseipdb.py`) as a template. Implement:
+
+```python
+class MyFeed(Provider):
+    name = "myfeed"                # used for config key, rate limiter, weights
+    supports = {IOCType.IP}        # or {IOCType.DOMAIN}, or both
+    requires_key = True            # False if free + keyless
+    max_rps = 1.0                  # respect the provider's free-tier limit
+
+    async def lookup(self, ioc, ioc_type, client, config) -> ProviderResult:
+        # Use `client` (an httpx.AsyncClient) — don't create your own.
+        # Return ProviderResult(provider, verdict, score, raw, error, latency_ms).
+        # NEVER raise: catch httpx.HTTPError and return Verdict.ERROR instead.
+        ...
+```
+
+**2. Register it** in `iocscan/providers/__init__.py`:
+
+```python
+from iocscan.providers.myfeed import MyFeed
+ALL_PROVIDERS = [..., MyFeed()]
+```
+
+**3. Add tests** at `tests/providers/test_myfeed.py` using the `make_client` fixture (`tests/conftest.py`) for mocked HTTP — never hit the live network in default tests.
+
+**4. (Optional) Tune scoring** in `iocscan/core/verdict.py`:
+- High-confidence sources go to `AUTHORITATIVE` (one hit = final malicious).
+- Trusted-but-not-authoritative sources get an entry in `WEIGHTS` (default weight is 1).
+
+That's it. No registry config, no plugin manifest — `ALL_PROVIDERS` is the only place that learns about your provider.
+
+### Invariants to respect
+
+- `lookup` must **never raise** — wrap network/parse errors and return `Verdict.ERROR`.
+- HTTP `404` → `Verdict.UNKNOWN` ("no data"), not `ERROR`.
+- HTTP `401/403` → `Verdict.ERROR` with `"auth failed"`.
+- HTTP `429` → `Verdict.ERROR` with `"429 rate limit"`.
+- Bulk-feed providers (download whole list once) must cap the body at 50 MB and cache in-process for 6h — see `feodo.py` / `spamhaus.py` for the pattern.
 
 ---
 
