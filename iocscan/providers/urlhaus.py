@@ -7,12 +7,13 @@ import httpx
 from iocscan.core.config import Config
 from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
-ENDPOINT = "https://urlhaus-api.abuse.ch/v1/host/"
+HOST_ENDPOINT = "https://urlhaus-api.abuse.ch/v1/host/"
+URL_ENDPOINT = "https://urlhaus-api.abuse.ch/v1/url/"
 
 
 class URLhaus(Provider):
     name = "urlhaus"
-    supports = {IOCType.DOMAIN, IOCType.IP}
+    supports = {IOCType.DOMAIN, IOCType.IP, IOCType.URL}
     requires_key = False
     max_rps = 5.0
 
@@ -22,8 +23,14 @@ class URLhaus(Provider):
         abusech_key = config.key_for("abusech")
         if abusech_key:
             headers["Auth-Key"] = abusech_key
+        if ioc_type == IOCType.URL:
+            endpoint = URL_ENDPOINT
+            data = {"url": ioc}
+        else:
+            endpoint = HOST_ENDPOINT
+            data = {"host": ioc}
         try:
-            resp = await client.post(ENDPOINT, data={"host": ioc}, headers=headers)
+            resp = await client.post(endpoint, data=data, headers=headers)
         except httpx.HTTPError as e:
             return _err(self.name, f"network: {e.__class__.__name__}", start)
         latency = int((time.perf_counter() - start) * 1000)
@@ -36,12 +43,12 @@ class URLhaus(Provider):
         if resp.status_code >= 400:
             return ProviderResult(self.name, Verdict.ERROR, "", None, f"{resp.status_code}", latency)
         try:
-            data = resp.json()
+            body = resp.json()
         except ValueError:
             return ProviderResult(self.name, Verdict.ERROR, "", None, "parse error", latency)
-        if data.get("query_status") == "ok":
-            url_count = data.get("url_count", "?")
-            return ProviderResult(
-                self.name, Verdict.MALICIOUS, f"{url_count} urls", data, None, latency
-            )
-        return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency)
+        if body.get("query_status") == "ok":
+            # /v1/host/ returns url_count; /v1/url/ returns threat (e.g.
+            # "malware_download"). Prefer threat label when present.
+            score = body.get("threat") or f"{body.get('url_count', '?')} urls"
+            return ProviderResult(self.name, Verdict.MALICIOUS, score, body, None, latency)
+        return ProviderResult(self.name, Verdict.CLEAN, "—", body, None, latency)

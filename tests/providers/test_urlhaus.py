@@ -67,3 +67,47 @@ async def test_urlhaus_401_returns_auth_failed():
         r = await URLhaus().lookup("x.com", IOCType.DOMAIN, c, Config())
     assert r.verdict == Verdict.ERROR
     assert "auth" in r.error.lower() or "401" in r.error
+
+
+# --- URL endpoint (IOCType.URL) ---
+
+
+async def test_url_lookup_routes_to_url_endpoint():
+    captured = {}
+    def h(req):
+        captured["url"] = str(req.url)
+        captured["body"] = req.content.decode()
+        return httpx.Response(200, json={
+            "query_status": "ok",
+            "url_status": "online",
+            "threat": "malware_download",
+        })
+    async with _client(h) as c:
+        r = await URLhaus().lookup(
+            "https://evil.com/badpath", IOCType.URL, c, Config(),
+        )
+    assert "/v1/url/" in captured["url"]
+    assert "url=https" in captured["body"]
+    assert r.verdict == Verdict.MALICIOUS
+    assert r.score == "malware_download"
+
+
+async def test_url_lookup_miss_returns_clean():
+    async with _client(lambda req: httpx.Response(200, json={"query_status": "no_results"})) as c:
+        r = await URLhaus().lookup(
+            "https://safe.com/", IOCType.URL, c, Config(),
+        )
+    assert r.verdict == Verdict.CLEAN
+
+
+async def test_host_lookup_still_uses_host_endpoint():
+    """Regression: IP/DOMAIN lookups must keep using /v1/host/."""
+    captured = {}
+    def h(req):
+        captured["url"] = str(req.url)
+        captured["body"] = req.content.decode()
+        return httpx.Response(200, json={"query_status": "no_results"})
+    async with _client(h) as c:
+        await URLhaus().lookup("evil.com", IOCType.DOMAIN, c, Config())
+    assert "/v1/host/" in captured["url"]
+    assert "host=evil.com" in captured["body"]

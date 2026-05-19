@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import time
 
 import httpx
@@ -12,7 +13,7 @@ BASE = "https://www.virustotal.com/api/v3"
 
 class VirusTotal(Provider):
     name = "virustotal"
-    supports = {IOCType.IP, IOCType.DOMAIN, IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256}
+    supports = {IOCType.IP, IOCType.DOMAIN, IOCType.URL, IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256}
     requires_key = True
     max_rps = 0.06       # 4 req/min free tier
     max_per_day = 500
@@ -22,14 +23,18 @@ class VirusTotal(Provider):
         if not key:
             return ProviderResult(self.name, Verdict.ERROR, "", None, "key required", 0)
         if ioc_type == IOCType.IP:
-            path = "ip_addresses"
+            path = f"ip_addresses/{ioc}"
         elif ioc_type == IOCType.DOMAIN:
-            path = "domains"
+            path = f"domains/{ioc}"
+        elif ioc_type == IOCType.URL:
+            # VT URL identifier = unpadded urlsafe base64 of the URL bytes.
+            url_id = base64.urlsafe_b64encode(ioc.encode()).rstrip(b"=").decode()
+            path = f"urls/{url_id}"
         else:
-            path = "files"   # hash variants
+            path = f"files/{ioc}"   # hash variants
         start = time.perf_counter()
         try:
-            resp = await client.get(f"{BASE}/{path}/{ioc}", headers={"x-apikey": key})
+            resp = await client.get(f"{BASE}/{path}", headers={"x-apikey": key})
         except httpx.HTTPError as e:
             return _err(self.name, f"network: {e.__class__.__name__}", start)
         latency = int((time.perf_counter() - start) * 1000)

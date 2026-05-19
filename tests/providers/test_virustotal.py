@@ -87,3 +87,20 @@ async def test_hash_routes_to_files_endpoint():
     assert captured["path"].endswith("/files/d41d8cd98f00b204e9800998ecf8427e")
     assert r.verdict == Verdict.MALICIOUS
     assert r.score == "45/70"
+
+
+async def test_url_routes_to_urls_endpoint_with_base64_id():
+    import base64
+    url = "https://evil.com/path"
+    expected_id = base64.urlsafe_b64encode(url.encode()).rstrip(b"=").decode()
+    body = (FIX / "file_hit.json").read_text()  # reuse PR2A fixture; same shape
+    captured = {}
+    def h(req):
+        captured["path"] = req.url.path
+        return httpx.Response(200, content=body)
+    async with _c(h) as c:
+        cfg = Config(keys={"virustotal": "KEY"})
+        r = await VirusTotal().lookup(url, IOCType.URL, c, cfg)
+    assert captured["path"].endswith(f"/urls/{expected_id}")
+    assert r.verdict == Verdict.MALICIOUS
+    assert r.score == "45/70"
