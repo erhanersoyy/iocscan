@@ -25,6 +25,7 @@ PROVIDER_ORDER = [
     "malwarebazaar", "yaraify",
     "urlscan",
     "shodan_internetdb",
+    "team_cymru", "whois_age", "crtsh",
 ]
 
 # Display-only short labels for column headers. Internal provider names
@@ -34,6 +35,9 @@ PROVIDER_LABELS = {
     "abuseipdb": "abuseip",
     "malwarebazaar": "mb",
     "shodan_internetdb": "shodan",
+    "team_cymru": "asn",
+    "whois_age": "whois",
+    "crtsh": "ct",
 }
 
 VERDICT_STYLES = {
