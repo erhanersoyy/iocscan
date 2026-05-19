@@ -69,10 +69,15 @@ class ProviderHealth:
     p95_latency_ms: int | None
 
 
-# Substrings that classify an error message as a 5xx-class server failure.
-# We match on the error string we already store, which providers populate
-# with the HTTP status code or a short reason.
-_5XX_MARKERS = ("500", "502", "503", "504", "server")
+import re
+
+# Providers emit 5xx errors in two stable shapes:
+#   "{code} server"       (when status_code >= 500)
+#   "{code}"              (other 4xx/5xx fallback)
+# Match the leading 5xx code with a word boundary so "latency 5004ms" or
+# "5006 results" don't trip the heuristic. The trailing "server" alt is
+# kept for the verbose form.
+_5XX_RE = re.compile(r"(?:^|\s)5\d{2}\b|\bserver\b", re.IGNORECASE)
 
 
 def health_report(
@@ -113,7 +118,7 @@ def health_report(
                 for r in reversed(rows)
                 if r[2] == Verdict.ERROR.value
                 and r[3]
-                and any(code in r[3] for code in _5XX_MARKERS)
+                and _5XX_RE.search(r[3])
             ),
             None,
         )

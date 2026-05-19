@@ -84,6 +84,33 @@ def test_record_results_empty_is_noop():
     assert rows[0][0] == 0
 
 
+def test_5xx_classifier_does_not_match_arbitrary_digit_substrings():
+    """Latency or count-like errors must NOT trigger last_5xx_at."""
+    conn = _mkconn()
+    record_results(conn, [
+        ProviderResult("vt", Verdict.ERROR, "", None, "latency 5004ms", 5004),
+        ProviderResult("otx", Verdict.ERROR, "", None, "got 5006 results", 100),
+    ])
+    report = health_report(conn)
+    by_name = {p.provider: p for p in report}
+    assert by_name["vt"].last_5xx_at is None
+    assert by_name["otx"].last_5xx_at is None
+
+
+def test_5xx_classifier_matches_leading_status_code_and_server_token():
+    conn = _mkconn()
+    record_results(conn, [
+        ProviderResult("a", Verdict.ERROR, "", None, "503 server", 0),
+        ProviderResult("b", Verdict.ERROR, "", None, "502", 0),
+        ProviderResult("c", Verdict.ERROR, "", None, "server timeout", 0),
+    ])
+    report = health_report(conn)
+    by_name = {p.provider: p for p in report}
+    assert by_name["a"].last_5xx_at is not None
+    assert by_name["b"].last_5xx_at is not None
+    assert by_name["c"].last_5xx_at is not None
+
+
 def test_percentile_helper():
     assert _percentile([], 95) == 0
     assert _percentile([10, 20, 30, 40, 50, 60, 70, 80, 90, 100], 95) == 100
