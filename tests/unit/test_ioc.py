@@ -66,3 +66,33 @@ def test_defang_to_defanged_round_trip():
 
     canonical = "evil.example.com"
     assert defang(to_defanged(canonical)) == canonical
+
+
+# --- hash detection ---
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("d41d8cd98f00b204e9800998ecf8427e",                                       IOCType.HASH_MD5),    # MD5 of empty string
+    ("DA39A3EE5E6B4B0D3255BFEF95601890AFD80709",                               IOCType.HASH_SHA1),   # SHA-1 uppercase
+    ("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",       IOCType.HASH_SHA256),
+])
+def test_detect_type_hash(value, expected):
+    assert detect_type(value) == expected
+
+
+@pytest.mark.parametrize("value", [
+    "0" * 32,            # all-zero sentinel
+    "f" * 64,            # all-f sentinel
+    "abc",               # too short
+    "g" * 32,            # not hex
+    "abcd1234" * 4 + "z",# 33 chars (off-by-one)
+])
+def test_detect_type_rejects_non_hash(value):
+    # Should NOT be classified as a hash. May return None or another type.
+    result = detect_type(value)
+    assert result not in (IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256)
+
+
+def test_parse_iocs_normalizes_hash_to_lowercase():
+    parsed = parse_iocs(["D41D8CD98F00B204E9800998ECF8427E"])
+    assert parsed == [("d41d8cd98f00b204e9800998ecf8427e", IOCType.HASH_MD5)]

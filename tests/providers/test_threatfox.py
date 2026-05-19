@@ -63,3 +63,20 @@ async def test_threatfox_401_returns_auth_failed():
     async with _c(lambda req: httpx.Response(401, content='{"error":"Unauthorized"}')) as c:
         r = await ThreatFox().lookup("x", IOCType.IP, c, Config())
     assert r.verdict == Verdict.ERROR
+
+
+async def test_hash_search_returns_malicious_on_hit():
+    captured = {}
+    def h(req):
+        captured["body"] = req.content
+        return httpx.Response(200, json={
+            "query_status": "ok",
+            "data": [{"malware": "Emotet"}],
+        })
+    async with _c(h) as c:
+        r = await ThreatFox().lookup(
+            "d41d8cd98f00b204e9800998ecf8427e", IOCType.HASH_MD5, c, Config(),
+        )
+    assert b"d41d8cd98f00b204e9800998ecf8427e" in captured["body"]
+    assert r.verdict == Verdict.MALICIOUS
+    assert r.score == "Emotet"

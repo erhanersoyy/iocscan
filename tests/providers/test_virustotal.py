@@ -71,3 +71,19 @@ async def test_401_auth_failed():
         r = await VirusTotal().lookup("1.2.3.4", IOCType.IP, c, cfg)
     assert r.verdict == Verdict.ERROR
     assert "auth" in r.error
+
+
+async def test_hash_routes_to_files_endpoint():
+    body = (FIX / "file_hit.json").read_text()
+    captured = {}
+    def h(req):
+        captured["path"] = req.url.path
+        return httpx.Response(200, content=body)
+    async with _c(h) as c:
+        cfg = Config(keys={"virustotal": "KEY"})
+        r = await VirusTotal().lookup(
+            "d41d8cd98f00b204e9800998ecf8427e", IOCType.HASH_MD5, c, cfg,
+        )
+    assert captured["path"].endswith("/files/d41d8cd98f00b204e9800998ecf8427e")
+    assert r.verdict == Verdict.MALICIOUS
+    assert r.score == "45/70"

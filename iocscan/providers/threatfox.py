@@ -13,7 +13,7 @@ ENDPOINT = "https://threatfox-api.abuse.ch/api/v1/"
 
 class ThreatFox(Provider):
     name = "threatfox"
-    supports = {IOCType.IP, IOCType.DOMAIN}
+    supports = {IOCType.IP, IOCType.DOMAIN, IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256}
     requires_key = False
     max_rps = 5.0
 
