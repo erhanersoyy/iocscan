@@ -3,6 +3,7 @@ from iocscan.providers.feodo import Feodo
 from iocscan.providers.greynoise import GreyNoise
 from iocscan.providers.malwarebazaar import MalwareBazaar
 from iocscan.providers.otx import OTX
+from iocscan.providers.shodan_internetdb import ShodanInternetDB
 from iocscan.providers.spamhaus import Spamhaus
 from iocscan.providers.threatfox import ThreatFox
 from iocscan.providers.tor import Tor
@@ -24,4 +25,5 @@ ALL_PROVIDERS = [
     MalwareBazaar(),
     YARAify(),
     URLScan(),
+    ShodanInternetDB(),
 ]
