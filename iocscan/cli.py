@@ -114,6 +114,7 @@ def _build_scan_parser() -> argparse.ArgumentParser:
     p.add_argument("--abuseipdb-key", help="AbuseIPDB API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_ABUSEIPDB_KEY env var)")
     p.add_argument("--otx-key", help="OTX API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_OTX_KEY env var)")
     p.add_argument("--greynoise-key", help="GreyNoise API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_GREYNOISE_KEY env var)")
+    p.add_argument("--urlscan-key", help="urlscan.io API key (INSECURE: visible via 'ps'. Prefer IOCSCAN_URLSCAN_KEY env var)")
     return p
 
 
@@ -173,6 +174,7 @@ def main(argv: list[str] | None = None) -> int:
         args.abuseipdb_key = None
         args.otx_key = None
         args.greynoise_key = None
+        args.urlscan_key = None
     else:
         parser = _build_scan_parser()
         args = parser.parse_args(raw_argv)
@@ -191,6 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         "abuseipdb": args.abuseipdb_key,
         "otx": args.otx_key,
         "greynoise": args.greynoise_key,
+        "urlscan": args.urlscan_key,
     }
     try:
         config = load_config(cli_keys=cli_keys)

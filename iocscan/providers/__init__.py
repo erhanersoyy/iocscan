@@ -7,6 +7,7 @@ from iocscan.providers.spamhaus import Spamhaus
 from iocscan.providers.threatfox import ThreatFox
 from iocscan.providers.tor import Tor
 from iocscan.providers.urlhaus import URLhaus
+from iocscan.providers.urlscan import URLScan
 from iocscan.providers.virustotal import VirusTotal
 from iocscan.providers.yaraify import YARAify
 
@@ -22,4 +23,5 @@ ALL_PROVIDERS = [
     GreyNoise(),
     MalwareBazaar(),
     YARAify(),
+    URLScan(),
 ]

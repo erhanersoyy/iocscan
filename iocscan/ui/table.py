@@ -23,6 +23,7 @@ PROVIDER_ORDER = [
     "urlhaus", "threatfox", "feodo", "tor", "spamhaus",
     "virustotal", "abuseipdb", "otx", "greynoise",
     "malwarebazaar", "yaraify",
+    "urlscan",
 ]
 
 # Display-only short labels for column headers. Internal provider names

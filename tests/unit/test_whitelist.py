@@ -58,6 +58,15 @@ def test_shared_tenant_subdomains_not_whitelisted(attacker_host):
         f"{attacker_host} should NOT be whitelisted"
 
 
+def test_url_never_whitelisted():
+    """URLs always go through; even whitelisted hosts can serve malicious paths."""
+    from iocscan.core.whitelist import is_whitelisted
+    from iocscan.providers.base import IOCType
+    assert is_whitelisted("https://evil.com/path", IOCType.URL) is False
+    # Even an URL on a whitelisted DOMAIN host must NOT be whitelisted as URL.
+    assert is_whitelisted("https://cloudflare.com/login", IOCType.URL) is False
+
+
 def test_tranco_cache_contributes_to_whitelist(tmp_path, monkeypatch):
     from iocscan.core import tranco, whitelist
     # Write a fake tranco cache that includes "example-not-bundled.com"
