@@ -58,3 +58,28 @@ def test_provider_permalink_default_returns_none():
 def test_provider_enrichment_only_defaults_false():
     p = _Dummy()
     assert p.enrichment_only is False
+
+
+def test_provider_key_alias_default_is_none():
+    p = _Dummy()
+    assert p.key_alias is None
+
+
+def test_provider_has_key_uses_key_alias_when_set():
+    """A provider with `key_alias` should look up that name, not its own."""
+    from iocscan.core.config import Config
+
+    class _Aliased(Provider):
+        name = "downstream"
+        supports = {IOCType.IP}
+        requires_key = True
+        key_alias = "shared"
+
+        async def lookup(self, ioc, ioc_type, client, config):
+            return ProviderResult(self.name, Verdict.CLEAN, "", None, None, 0)
+
+    p = _Aliased()
+    cfg_with = Config(keys={"shared": "VALUE"})
+    cfg_without = Config(keys={"downstream": "VALUE"})  # wrong name → still missing
+    assert p.has_key(cfg_with) is True
+    assert p.has_key(cfg_without) is False
