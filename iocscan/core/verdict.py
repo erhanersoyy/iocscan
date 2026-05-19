@@ -5,7 +5,7 @@ from iocscan.providers.base import ProviderResult, Verdict
 MIN_COVERAGE_DEFAULT = 3
 
 # Authoritative blocklists — single MALICIOUS = final MALICIOUS
-AUTHORITATIVE = {"spamhaus", "feodo"}
+AUTHORITATIVE = {"spamhaus", "feodo", "malwarebazaar"}
 
 # Tier 2 weights (multi-engine / multi-source providers count more)
 WEIGHTS = {

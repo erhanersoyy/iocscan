@@ -22,6 +22,7 @@ from iocscan.ui.glyph import (
 PROVIDER_ORDER = [
     "urlhaus", "threatfox", "feodo", "tor", "spamhaus",
     "virustotal", "abuseipdb", "otx", "greynoise",
+    "malwarebazaar", "yaraify",
 ]
 
 # Display-only short labels for column headers. Internal provider names
@@ -29,6 +30,7 @@ PROVIDER_ORDER = [
 PROVIDER_LABELS = {
     "virustotal": "vt",
     "abuseipdb": "abuseip",
+    "malwarebazaar": "mb",
 }
 
 VERDICT_STYLES = {

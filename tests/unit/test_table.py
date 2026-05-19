@@ -7,7 +7,8 @@ from iocscan.providers.base import IOCType, ProviderResult, Verdict
 from iocscan.ui.table import render_table
 
 PROVIDERS = ["urlhaus", "threatfox", "feodo", "tor", "spamhaus",
-             "virustotal", "abuseipdb", "otx", "greynoise"]
+             "virustotal", "abuseipdb", "otx", "greynoise",
+             "malwarebazaar", "yaraify"]
 
 
 def _scan(verdict, **per_provider):
@@ -50,7 +51,7 @@ def test_table_renames_virustotal_and_abuseipdb_headers():
 def test_table_shows_coverage_in_verdict_cell():
     out = _render([_scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN, threatfox=Verdict.CLEAN,
                          feodo=Verdict.CLEAN, virustotal=Verdict.CLEAN)])
-    assert "(4/9)" in out
+    assert "(4/11)" in out
 
 
 def test_table_whitelist_flag_renders_as_whitelisted():
@@ -61,7 +62,7 @@ def test_table_whitelist_flag_renders_as_whitelisted():
     misleading for bundled hits.
     """
     scan = ScanResult(
-        "cloudflare.com", IOCType.DOMAIN, Verdict.CLEAN, [], 0, 9, whitelisted=True
+        "cloudflare.com", IOCType.DOMAIN, Verdict.CLEAN, [], 0, 11, whitelisted=True
     )
     out = _render([scan])
     assert "whitelisted" in out
@@ -76,12 +77,13 @@ def test_narrow_mode_uses_compact_layout():
     assert "greynoise" in out
 
 
-def test_narrow_mode_lists_all_nine_providers_in_order():
+def test_narrow_mode_lists_all_providers_in_order():
     """Compact layout shows every provider, one per line, in PROVIDER_ORDER."""
     out = _render([_scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN, otx=Verdict.CLEAN)], narrow=True)
-    # All 9 provider labels (using display labels) must appear
+    # All 11 provider labels (using display labels) must appear
     expected_labels = ["urlhaus", "threatfox", "feodo", "tor", "spamhaus",
-                       "vt", "abuseip", "otx", "greynoise"]
+                       "vt", "abuseip", "otx", "greynoise",
+                       "mb", "yaraify"]
     positions = [out.find(label) for label in expected_labels]
     assert all(p >= 0 for p in positions), f"Missing labels: {[l for l, p in zip(expected_labels, positions) if p < 0]}"
     # Positions must be strictly increasing (i.e. labels appear in PROVIDER_ORDER)
@@ -225,5 +227,5 @@ def test_wide_flag_overrides_narrow_terminal():
     # Wide mode has many columns and no "Details" column;
     # provider names may be Rich-truncated at this width.
     assert "Details" not in out
-    # 11 columns (IOC + Verdict + 9 providers) → 10 "┳" joins in the header rule
-    assert out.count("┳") >= 10
+    # 13 columns (IOC + Verdict + 11 providers) → 12 "┳" joins in the header rule
+    assert out.count("┳") >= 12
