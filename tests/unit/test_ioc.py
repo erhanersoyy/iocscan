@@ -20,14 +20,38 @@ def test_defang(raw, expected):
     ("2001:db8::1",                   IOCType.IP),
     ("evil.com",                      IOCType.DOMAIN),
     ("sub.example.co.uk",             IOCType.DOMAIN),
-    ("https://evil.com/path?x=1",     IOCType.DOMAIN),
-    ("hxxp://1.2.3[.]4/abc",          IOCType.IP),
+    ("https://evil.com/path?x=1",     IOCType.URL),
+    ("hxxp://1.2.3[.]4/abc",          IOCType.URL),
     ("not an ioc",                    None),
     ("",                              None),
     ("999.999.999.999",               None),
 ])
 def test_detect_type(value, expected):
     assert detect_type(value) == expected
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("http://evil.com/path",                          IOCType.URL),
+    ("https://evil.com",                              IOCType.URL),    # URL even without path
+    ("hxxps://corporate-login[.]xyz/auth?token=ABC",  IOCType.URL),
+    ("https://1.2.3.4/admin",                         IOCType.URL),
+    ("ftp://evil.com/file",                           None),           # non-http(s) schemes rejected
+    ("://nothing",                                    None),           # malformed
+    ("https://",                                      None),           # no host
+])
+def test_detect_type_url(value, expected):
+    assert detect_type(value) == expected
+
+
+def test_parse_iocs_preserves_url_path_case():
+    """URL path is case-sensitive per RFC 3986; host is not."""
+    parsed = parse_iocs(["HTTP://EVIL.COM/CaseSensitivePath?Q=A"])
+    assert parsed == [("http://evil.com/CaseSensitivePath?Q=A", IOCType.URL)]
+
+
+def test_parse_iocs_url_refangs_hxxp():
+    parsed = parse_iocs(["hxxps://evil[.]com/path"])
+    assert parsed == [("https://evil.com/path", IOCType.URL)]
 
 
 def test_parse_iocs_dedupes_and_normalizes():
