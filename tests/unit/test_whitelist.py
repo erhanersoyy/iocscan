@@ -34,6 +34,12 @@ def test_ip_never_whitelisted():
     assert is_whitelisted("1.1.1.1", IOCType.IP) is False
 
 
+def test_hash_never_whitelisted():
+    assert is_whitelisted("d41d8cd98f00b204e9800998ecf8427e", IOCType.HASH_MD5) is False
+    assert is_whitelisted("da39a3ee5e6b4b0d3255bfef95601890afd80709", IOCType.HASH_SHA1) is False
+    assert is_whitelisted("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", IOCType.HASH_SHA256) is False
+
+
 def test_case_insensitive():
     assert is_whitelisted("Cloudflare.COM", IOCType.DOMAIN) is True
 

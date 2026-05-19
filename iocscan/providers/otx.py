@@ -12,7 +12,7 @@ BASE = "https://otx.alienvault.com/api/v1/indicators"
 
 class OTX(Provider):
     name = "otx"
-    supports = {IOCType.IP, IOCType.DOMAIN}
+    supports = {IOCType.IP, IOCType.DOMAIN, IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256}
     requires_key = True
     max_rps = 5.0
 
@@ -20,7 +20,12 @@ class OTX(Provider):
         key = config.key_for(self.name)
         if not key:
             return ProviderResult(self.name, Verdict.ERROR, "", None, "key required", 0)
-        path_prefix = "IPv4" if ioc_type == IOCType.IP else "domain"
+        if ioc_type == IOCType.IP:
+            path_prefix = "IPv4"
+        elif ioc_type == IOCType.DOMAIN:
+            path_prefix = "domain"
+        else:
+            path_prefix = "file"   # hash variants
         url = f"{BASE}/{path_prefix}/{ioc}/general"
         start = time.perf_counter()
         try:

@@ -18,6 +18,28 @@ _DOMAIN_RE = re.compile(
     r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$",
     re.IGNORECASE,
 )
+_HEX_RE = re.compile(r"^[0-9a-f]+$", re.IGNORECASE)
+_HASH_LEN_TO_TYPE = {
+    32: IOCType.HASH_MD5,
+    40: IOCType.HASH_SHA1,
+    64: IOCType.HASH_SHA256,
+}
+
+
+def _detect_hash(value: str) -> IOCType | None:
+    """Classify hex strings of length 32/40/64 as MD5/SHA-1/SHA-256.
+
+    Rejects all-same-char strings (e.g. "0"*32, "f"*64) which are
+    sentinel placeholders, not real hashes.
+    """
+    if not _HEX_RE.match(value):
+        return None
+    ioc_type = _HASH_LEN_TO_TYPE.get(len(value))
+    if ioc_type is None:
+        return None
+    if len(set(value.lower())) == 1:
+        return None
+    return ioc_type
 
 
 def defang(s: str) -> str:
@@ -64,7 +86,7 @@ def detect_type(value: str) -> IOCType | None:
         pass
     if _DOMAIN_RE.match(candidate):
         return IOCType.DOMAIN
-    return None
+    return _detect_hash(candidate)
 
 
 def _normalize(value: str) -> str:

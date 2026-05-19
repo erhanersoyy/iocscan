@@ -50,3 +50,17 @@ async def test_clean():
         cfg = Config(keys={"otx": "K"})
         r = await OTX().lookup("8.8.8.8", IOCType.IP, c, cfg)
     assert r.verdict == Verdict.CLEAN
+
+
+async def test_hash_routes_to_file_general():
+    captured = {}
+    def h(req):
+        captured["path"] = req.url.path
+        return httpx.Response(200, json={"pulse_info": {"count": 5}})
+    async with _c(h) as c:
+        cfg = Config(keys={"otx": "KEY"})
+        r = await OTX().lookup(
+            "d41d8cd98f00b204e9800998ecf8427e", IOCType.HASH_MD5, c, cfg,
+        )
+    assert captured["path"].endswith("/file/d41d8cd98f00b204e9800998ecf8427e/general")
+    assert r.verdict == Verdict.MALICIOUS  # count=5 >= 3
