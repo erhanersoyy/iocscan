@@ -118,6 +118,22 @@ def test_below_30pct_threshold_returns_clean():
     assert aggregate(results) == Verdict.CLEAN
 
 
+def test_malwarebazaar_is_authoritative():
+    from iocscan.core.verdict import AUTHORITATIVE
+    assert "malwarebazaar" in AUTHORITATIVE
+
+
+def test_aggregate_malwarebazaar_hit_short_circuits_to_malicious():
+    # Three voters CLEAN, one MalwareBazaar MALICIOUS -> authoritative
+    results = [
+        ProviderResult("virustotal", Verdict.CLEAN, "0/70", None, None, 0),
+        ProviderResult("otx", Verdict.CLEAN, "0 pulses", None, None, 0),
+        ProviderResult("threatfox", Verdict.CLEAN, "—", None, None, 0),
+        ProviderResult("malwarebazaar", Verdict.MALICIOUS, "Emotet", None, None, 0),
+    ]
+    assert aggregate(results) == Verdict.MALICIOUS
+
+
 def test_aggregate_ignores_enrichment_only_providers():
     # An enrichment-only MALICIOUS row must not flip the verdict.
     results = [
