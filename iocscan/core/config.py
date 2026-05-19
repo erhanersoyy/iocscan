@@ -16,6 +16,7 @@ ENV_VARS = {
     "abuseipdb":  "IOCSCAN_ABUSEIPDB_KEY",
     "otx":        "IOCSCAN_OTX_KEY",
     "greynoise":  "IOCSCAN_GREYNOISE_KEY",
+    "urlscan":    "IOCSCAN_URLSCAN_KEY",
 }
 
 

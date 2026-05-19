@@ -8,7 +8,7 @@ from iocscan.ui.table import render_table
 
 PROVIDERS = ["urlhaus", "threatfox", "feodo", "tor", "spamhaus",
              "virustotal", "abuseipdb", "otx", "greynoise",
-             "malwarebazaar", "yaraify"]
+             "malwarebazaar", "yaraify", "urlscan"]
 
 
 def _scan(verdict, **per_provider):
@@ -51,7 +51,7 @@ def test_table_renames_virustotal_and_abuseipdb_headers():
 def test_table_shows_coverage_in_verdict_cell():
     out = _render([_scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN, threatfox=Verdict.CLEAN,
                          feodo=Verdict.CLEAN, virustotal=Verdict.CLEAN)])
-    assert "(4/11)" in out
+    assert "(4/12)" in out
 
 
 def test_table_whitelist_flag_renders_as_whitelisted():
@@ -62,7 +62,7 @@ def test_table_whitelist_flag_renders_as_whitelisted():
     misleading for bundled hits.
     """
     scan = ScanResult(
-        "cloudflare.com", IOCType.DOMAIN, Verdict.CLEAN, [], 0, 11, whitelisted=True
+        "cloudflare.com", IOCType.DOMAIN, Verdict.CLEAN, [], 0, 12, whitelisted=True
     )
     out = _render([scan])
     assert "whitelisted" in out
@@ -80,10 +80,10 @@ def test_narrow_mode_uses_compact_layout():
 def test_narrow_mode_lists_all_providers_in_order():
     """Compact layout shows every provider, one per line, in PROVIDER_ORDER."""
     out = _render([_scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN, otx=Verdict.CLEAN)], narrow=True)
-    # All 11 provider labels (using display labels) must appear
+    # All 12 provider labels (using display labels) must appear
     expected_labels = ["urlhaus", "threatfox", "feodo", "tor", "spamhaus",
                        "vt", "abuseip", "otx", "greynoise",
-                       "mb", "yaraify"]
+                       "mb", "yaraify", "urlscan"]
     positions = [out.find(label) for label in expected_labels]
     assert all(p >= 0 for p in positions), f"Missing labels: {[l for l, p in zip(expected_labels, positions) if p < 0]}"
     # Positions must be strictly increasing (i.e. labels appear in PROVIDER_ORDER)
@@ -212,7 +212,9 @@ def test_auto_narrow_kicks_in_below_threshold():
 def test_auto_wide_above_threshold():
     """Terminals at or above 100 columns auto-render wide."""
     scan = _scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)
-    out = _render_with_width([scan], console_width=120)
+    # Use a width comfortably wider than 100 (the auto-narrow threshold) so
+    # that the wide layout has room to print full provider labels for all 12.
+    out = _render_with_width([scan], console_width=160)
     # Wide mode shows every provider column header
     assert "urlhaus" in out
     assert "greynoise" in out
@@ -227,5 +229,5 @@ def test_wide_flag_overrides_narrow_terminal():
     # Wide mode has many columns and no "Details" column;
     # provider names may be Rich-truncated at this width.
     assert "Details" not in out
-    # 13 columns (IOC + Verdict + 11 providers) → 12 "┳" joins in the header rule
-    assert out.count("┳") >= 12
+    # 14 columns (IOC + Verdict + 12 providers) → 13 "┳" joins in the header rule
+    assert out.count("┳") >= 13

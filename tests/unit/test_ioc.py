@@ -54,6 +54,12 @@ def test_parse_iocs_url_refangs_hxxp():
     assert parsed == [("https://evil.com/path", IOCType.URL)]
 
 
+def test_parse_iocs_url_preserves_port():
+    """URL normalization must keep the port intact while lowercasing the host."""
+    parsed = parse_iocs(["HTTPS://Evil.com:8443/Path"])
+    assert parsed == [("https://evil.com:8443/Path", IOCType.URL)]
+
+
 def test_parse_iocs_dedupes_and_normalizes():
     raw = ["1.2.3.4", "1.2.3[.]4", "EVIL.COM", "evil.com", "garbage"]
     parsed = parse_iocs(raw)

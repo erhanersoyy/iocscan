@@ -15,6 +15,7 @@ def tmp_home(monkeypatch):
         monkeypatch.delenv("IOCSCAN_ABUSEIPDB_KEY", raising=False)
         monkeypatch.delenv("IOCSCAN_OTX_KEY", raising=False)
         monkeypatch.delenv("IOCSCAN_GREYNOISE_KEY", raising=False)
+        monkeypatch.delenv("IOCSCAN_URLSCAN_KEY", raising=False)
         yield Path(d)
 
 

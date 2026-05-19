@@ -2,13 +2,13 @@ from iocscan.providers import ALL_PROVIDERS
 from iocscan.providers.base import Provider
 
 
-def test_eleven_providers_registered():
-    assert len(ALL_PROVIDERS) == 11
+def test_twelve_providers_registered():
+    assert len(ALL_PROVIDERS) == 12
     names = {p.name for p in ALL_PROVIDERS}
     assert names == {
         "urlhaus", "threatfox", "feodo", "tor", "spamhaus",
         "virustotal", "abuseipdb", "otx", "greynoise",
-        "malwarebazaar", "yaraify",
+        "malwarebazaar", "yaraify", "urlscan",
     }
 
 
@@ -20,7 +20,7 @@ def test_all_are_provider_instances():
 def test_keyless_and_keyed_counts():
     keyless = [p for p in ALL_PROVIDERS if not p.requires_key]
     keyed = [p for p in ALL_PROVIDERS if p.requires_key]
-    assert len(keyless) == 6   # URLhaus, ThreatFox, Feodo, Tor, Spamhaus, GreyNoise
+    assert len(keyless) == 7   # URLhaus, ThreatFox, Feodo, Tor, Spamhaus, GreyNoise, URLScan
     assert len(keyed) == 5     # VirusTotal, AbuseIPDB, OTX, MalwareBazaar, YARAify
 
 
