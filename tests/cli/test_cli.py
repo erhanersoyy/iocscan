@@ -311,3 +311,27 @@ def test_cli_quiet_overrides_format(tmp_home, mock_provider_responses, capsys):
     # TSV: tab-separated, not CSV header
     assert "\t" in out
     assert "ioc,type" not in out
+
+
+def test_cli_links_only_emits_tsv(tmp_home, mock_provider_responses, capsys):
+    """--links-only emits IOC\\tprovider\\tpermalink and suppresses the table."""
+    rc = main(["--links-only", "--no-cache", "1.2.3.4"])
+    out = capsys.readouterr().out
+    lines = [ln for ln in out.split("\n") if ln.strip()]
+    assert lines, "expected at least one IOC\\tprovider\\tpermalink line"
+    for ln in lines:
+        parts = ln.split("\t")
+        assert len(parts) == 3, f"expected 3 columns, got: {ln!r}"
+        assert parts[0] == "1.2.3.4"
+        assert parts[2].startswith("http")
+    # Table glyphs / box characters must not leak in.
+    assert "┳" not in out
+    assert "│" not in out
+
+
+def test_cli_links_only_skips_providers_without_permalink(tmp_home, mock_provider_responses, capsys):
+    """Providers with no permalink (Feodo/Spamhaus/Tor) must not appear."""
+    rc = main(["--links-only", "--no-cache", "1.2.3.4"])
+    out = capsys.readouterr().out
+    for offender in ("feodo", "spamhaus", "\ttor\t"):
+        assert offender not in out

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from urllib.parse import quote
 
 import httpx
 
@@ -61,3 +62,8 @@ class URLScan(Provider):
                 data, None, latency,
             )
         return ProviderResult(self.name, Verdict.SUSPICIOUS, f"{total} scans", data, None, latency)
+
+    def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
+        if ioc_type == IOCType.URL:
+            return f"https://urlscan.io/search/#page.url%3A%22{quote(ioc, safe='')}%22"
+        return None

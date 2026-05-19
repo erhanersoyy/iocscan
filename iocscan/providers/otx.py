@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from urllib.parse import quote
 
 import httpx
 
@@ -51,3 +52,12 @@ class OTX(Provider):
         else:
             v = Verdict.CLEAN
         return ProviderResult(self.name, v, f"{count} pulses", data, None, latency)
+
+    def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
+        if ioc_type == IOCType.IP:
+            return f"https://otx.alienvault.com/indicator/ip/{ioc}"
+        if ioc_type == IOCType.DOMAIN:
+            return f"https://otx.alienvault.com/indicator/domain/{ioc}"
+        if ioc_type == IOCType.URL:
+            return f"https://otx.alienvault.com/indicator/url/{quote(ioc, safe='')}"
+        return f"https://otx.alienvault.com/indicator/file/{ioc}"

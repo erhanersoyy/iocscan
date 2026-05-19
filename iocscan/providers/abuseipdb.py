@@ -51,3 +51,8 @@ class AbuseIPDB(Provider):
         else:
             v = Verdict.CLEAN
         return ProviderResult(self.name, v, f"{score}%", data, None, latency)
+
+    def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
+        if ioc_type == IOCType.IP:
+            return f"https://www.abuseipdb.com/check/{ioc}"
+        return None

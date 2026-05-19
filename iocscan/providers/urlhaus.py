@@ -52,3 +52,9 @@ class URLhaus(Provider):
             score = body.get("threat") or f"{body.get('url_count', '?')} urls"
             return ProviderResult(self.name, Verdict.MALICIOUS, score, body, None, latency)
         return ProviderResult(self.name, Verdict.CLEAN, "—", body, None, latency)
+
+    def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
+        if ioc_type in (IOCType.IP, IOCType.DOMAIN):
+            return f"https://urlhaus.abuse.ch/host/{ioc}/"
+        # No stable per-URL deeplink for arbitrary URLs.
+        return None

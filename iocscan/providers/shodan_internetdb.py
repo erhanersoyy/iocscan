@@ -55,3 +55,9 @@ class ShodanInternetDB(Provider):
                 data, None, latency,
             )
         return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency)
+
+    def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
+        # The InternetDB JSON itself is user-readable; no separate UI page.
+        if ioc_type == IOCType.IP:
+            return f"https://internetdb.shodan.io/{ioc}"
+        return None
