@@ -53,6 +53,22 @@ def test_table_shows_coverage_in_verdict_cell():
     assert "(4/9)" in out
 
 
+def test_table_whitelist_flag_renders_as_whitelisted():
+    """Whitelisted rows show '⚑ whitelisted' in the verdict cell.
+
+    The label covers both bundled critical-infra domains and the Tranco
+    top-1K list — so a source-specific label like 'Top 1k' would be
+    misleading for bundled hits.
+    """
+    scan = ScanResult(
+        "cloudflare.com", IOCType.DOMAIN, Verdict.CLEAN, [], 0, 9, whitelisted=True
+    )
+    out = _render([scan])
+    assert "whitelisted" in out
+    assert "Top 1k" not in out
+    assert "⚑" in out
+
+
 def test_narrow_mode_uses_compact_layout():
     out = _render([_scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)], narrow=True)
     assert "urlhaus" in out
