@@ -12,17 +12,16 @@ import os
 import sys
 from pathlib import Path
 
-import httpx
 from rich.console import Console
 from rich.panel import Panel
 
 from iocscan.core.cache import Cache
 from iocscan.core.config import Config
 from iocscan.core.ioc import detect_type
-from iocscan.core.scan import scan_ioc
+from iocscan.core.scan import _apply_whitelist, scan_ioc
 from iocscan.core.verdict import AUTHORITATIVE, WEIGHTS, aggregate, coverage
 from iocscan.providers import ALL_PROVIDERS
-from iocscan.providers.base import Verdict
+from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
 from iocscan.ui.console import make_console
 from iocscan.ui.glyph import verdict_glyph
 
@@ -30,7 +29,9 @@ from iocscan.ui.glyph import verdict_glyph
 _RAW_LIMIT = 500
 
 
-def _provider_panel(result, provider, ioc: str, ioc_type) -> Panel:
+def _provider_panel(
+    result: ProviderResult, provider: Provider, ioc: str, ioc_type: IOCType,
+) -> Panel:
     glyph = verdict_glyph(result.verdict, ascii_only=False)
     lines: list[str] = [f"score:     {result.score or '—'}"]
     if result.error:
@@ -62,7 +63,9 @@ def _provider_panel(result, provider, ioc: str, ioc_type) -> Panel:
     )
 
 
-def _math_panel(merged, min_coverage: int) -> Panel:
+def _math_panel(
+    merged: list[ProviderResult], ioc: str, ioc_type: IOCType, min_coverage: int,
+) -> Panel:
     enrichment_only = {p.name for p in ALL_PROVIDERS if p.enrichment_only}
     responding = [
         r for r in merged
@@ -72,7 +75,10 @@ def _math_panel(merged, min_coverage: int) -> Panel:
     mal_w = sum(WEIGHTS.get(r.provider, 1) for r in responding if r.verdict == Verdict.MALICIOUS)
     susp_w = sum(WEIGHTS.get(r.provider, 1) for r in responding if r.verdict == Verdict.SUSPICIOUS)
     total_w = sum(WEIGHTS.get(r.provider, 1) for r in responding)
-    final = aggregate(merged, min_coverage=min_coverage, enrichment_only=enrichment_only)
+    raw_verdict = aggregate(merged, min_coverage=min_coverage, enrichment_only=enrichment_only)
+    # Match `_run_scan`'s post-aggregation clamp so the math panel agrees
+    # with what `iocscan <ioc>` prints for whitelisted hosts.
+    final, whitelisted = _apply_whitelist(ioc, ioc_type, raw_verdict)
     resp_count, total_count = coverage(merged, enrichment_only=enrichment_only)
 
     lines: list[str] = []
@@ -94,18 +100,21 @@ def _math_panel(merged, min_coverage: int) -> Panel:
         ms_pct = (mal_w + susp_w) / total_w * 100
         lines.append(f"malicious share:    {mal_w}/{total_w} = {mal_pct:.1f}% (threshold 30%)")
         lines.append(f"+ suspicious share: {mal_w + susp_w}/{total_w} = {ms_pct:.1f}%")
+    if whitelisted and raw_verdict != final:
+        lines.append(f"whitelisted: yes  ({raw_verdict.value.upper()} -> {final.value.upper()})")
     lines.append(f"final verdict: {final.value.upper()}")
     return Panel("\n".join(lines), title="aggregation math", expand=False)
 
 
-async def _run(ioc: str, ioc_type, config: Config, console: Console) -> int:
+async def _run(ioc: str, ioc_type: IOCType, config: Config, console: Console) -> int:
+    # Local import to avoid a circular dependency: cli imports explain on demand.
+    from iocscan.cli import _make_client
+
     cache_path = Path(os.path.expanduser("~")) / ".iocscan" / "cache.db"
     cache = Cache(cache_path, ttl_seconds=config.cache_ttl_hours * 3600)
     try:
         cached = cache.get(ioc) or {}
-        async with httpx.AsyncClient(
-            http2=True, timeout=httpx.Timeout(config.timeout_seconds)
-        ) as client:
+        async with _make_client(config.timeout_seconds) as client:
             providers_to_query = [
                 p for p in ALL_PROVIDERS
                 if p.name not in cached and ioc_type in p.supports
@@ -125,7 +134,7 @@ async def _run(ioc: str, ioc_type, config: Config, console: Console) -> int:
         for r in ordered:
             console.print(_provider_panel(r, by_name[r.provider], ioc, ioc_type))
 
-        console.print(_math_panel(merged, config.min_coverage))
+        console.print(_math_panel(merged, ioc, ioc_type, config.min_coverage))
         return 0
     finally:
         cache.close()
