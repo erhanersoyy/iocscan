@@ -119,6 +119,7 @@ async def scan_ioc(
     config: Config,
 ) -> ScanResult:
     applicable = [p for p in providers if ioc_type in p.supports]
+    enrichment_only = {p.name for p in applicable if p.enrichment_only}
     tasks = [_throttled_lookup(p, ioc, ioc_type, client, config) for p in applicable]
     raw = await asyncio.gather(*tasks, return_exceptions=True)
     results: list[ProviderResult] = []
@@ -134,8 +135,10 @@ async def scan_ioc(
             ))
         else:
             results.append(item)
-    raw_verdict = aggregate(results, min_coverage=config.min_coverage)
-    responding, total = coverage(results)
+    raw_verdict = aggregate(
+        results, min_coverage=config.min_coverage, enrichment_only=enrichment_only,
+    )
+    responding, total = coverage(results, enrichment_only=enrichment_only)
     final_verdict, whitelisted = _apply_whitelist(ioc, ioc_type, raw_verdict)
     return ScanResult(
         ioc=ioc, ioc_type=ioc_type, verdict=final_verdict,

@@ -1,4 +1,4 @@
-from iocscan.core.verdict import aggregate, MIN_COVERAGE_DEFAULT
+from iocscan.core.verdict import aggregate, coverage, MIN_COVERAGE_DEFAULT
 from iocscan.providers.base import ProviderResult, Verdict
 
 
@@ -116,3 +116,25 @@ def test_below_30pct_threshold_returns_clean():
         _r("greynoise", Verdict.CLEAN),
     ]
     assert aggregate(results) == Verdict.CLEAN
+
+
+def test_aggregate_ignores_enrichment_only_providers():
+    # An enrichment-only MALICIOUS row must not flip the verdict.
+    results = [
+        ProviderResult("a", Verdict.CLEAN, "x", None, None, 0),
+        ProviderResult("b", Verdict.CLEAN, "x", None, None, 0),
+        ProviderResult("c", Verdict.CLEAN, "x", None, None, 0),
+        ProviderResult("shodan", Verdict.MALICIOUS, "x", None, None, 0),
+    ]
+    assert aggregate(results, enrichment_only={"shodan"}) == Verdict.CLEAN
+
+
+def test_coverage_ignores_enrichment_only_providers():
+    results = [
+        ProviderResult("a", Verdict.CLEAN, "x", None, None, 0),
+        ProviderResult("b", Verdict.UNKNOWN, "", None, None, 0),
+        ProviderResult("shodan", Verdict.CLEAN, "x", None, None, 0),
+    ]
+    responding, total = coverage(results, enrichment_only={"shodan"})
+    assert responding == 1  # 'a' only; 'b' UNKNOWN doesn't count
+    assert total == 2       # 'a' + 'b'; 'shodan' excluded from total
