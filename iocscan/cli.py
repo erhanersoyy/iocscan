@@ -351,10 +351,10 @@ async def _run_scan(parsed, config, args) -> int:
             inc = [s.strip() for s in args.include.split(",") if s.strip()]
             exc = [s.strip() for s in args.exclude.split(",") if s.strip()]
             if inc or exc:
-                import json as _json
+                import json
                 from iocscan.ui.field_filter import apply_filter
-                payload = _json.loads(payload_str)
-                payload_str = _json.dumps(apply_filter(payload, inc, exc), indent=2)
+                payload = json.loads(payload_str)
+                payload_str = json.dumps(apply_filter(payload, inc, exc), indent=2)
             print(payload_str)
         elif fmt in EXPORT_FORMATS:
             print(render_export(scans_out, fmt, defang=args.defang))

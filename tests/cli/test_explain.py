@@ -32,16 +32,6 @@ def mock_provider_responses(monkeypatch):
             transport=httpx.MockTransport(handler), timeout=timeout
         ),
     )
-    # explain.py constructs its own httpx.AsyncClient; swap it for a
-    # MockTransport-backed one so live network is never hit. Capture the
-    # original class before patching to avoid recursion.
-    import iocscan.explain as explain_mod
-    orig_client_cls = httpx.AsyncClient
-
-    def _factory(*a, **kw):
-        return orig_client_cls(transport=httpx.MockTransport(handler), timeout=5.0)
-
-    monkeypatch.setattr(explain_mod.httpx, "AsyncClient", _factory)
 
 
 def test_explain_rejects_invalid_ioc(tmp_home, capsys):
