@@ -62,6 +62,10 @@ iocscan understands common defanged formats (`evil[.]com`, `1[.]2[.]3[.]4`, `hxx
 
 ## Reading the output
 
+Example scan of a mixed batch of IPs and domains (default `solarized-dark` theme, wide table):
+
+![iocscan example output](test_output.png)
+
 iocscan renders a **wide** table when the terminal is at least 100 columns and a **compact** table when it isn't. Use `--narrow` to force compact or `--wide` to force wide. Add `--no-color` to disable ANSI colors, `--ascii` to swap Unicode glyphs for `[!]`/`[~]`/`[ ]`/etc. fallbacks (also honors the standard `NO_COLOR` / `FORCE_COLOR` env vars).
 
 ### Themes
@@ -119,12 +123,19 @@ After the table, a multi-line summary block shows totals, verdict counts, provid
 
 ### Output modes
 
-| Flag | Output | Use case |
+| Flag | Format | Use case |
 |---|---|---|
 | *(default)* | Colored table + summary footer | Interactive triage |
-| `--json` | Pretty JSON to stdout | SOAR / SIEM ingestion |
+| `--format json` | Pretty JSON to stdout | SOAR / SIEM ingestion (full provider detail) |
+| `--format jsonl` | One JSON object per line | Streaming pipelines |
+| `--format csv` | RFC 4180 CSV with 6 columns | Spreadsheets / ticket attachments |
+| `--format markdown` | GitHub-flavored markdown table | Paste into PR / Confluence / ticket |
 | `--quiet` / `-q` | TSV: `IOC\tverdict\tcoverage` per line | `grep` / `awk` / CI scripts |
 | `--defang` | Renders IOCs as `evil[.]com`, `1[.]2[.]3[.]4` in any of the above | Pasting into Slack / email / Confluence without auto-links |
+
+`--json` still works as a deprecated alias for `--format json`. `--quiet` wins over `--format` (low-noise contract).
+
+JSON is the only format that carries the full per-provider breakdown — `jsonl`, `csv`, and `markdown` are flat summary exports (IOC, type, verdict, coverage, whitelisted).
 
 ### Sorting
 
@@ -335,17 +346,6 @@ The cache lives at `~/.iocscan/tranco-1k.txt`. Re-run `update` weekly to keep it
 - **All results say `429 rate limit`** — you're hitting free-tier limits. Wait, or add a key for higher-tier providers (GreyNoise especially).
 - **Exit code 5 (all unknown)** — fewer than 3 providers responded. Add more API keys; see `python -m iocscan providers`.
 - **Verbose troubleshooting** — `python -m iocscan --debug ...` logs each provider call to stderr (no API keys are logged).
-
----
-
-## Security
-
-- API keys are stored at `~/.iocscan/config.toml` with mode `0600` and the parent directory at `0700`. Writes are atomic (tmp + rename).
-- The SQLite cache refuses to open if it's a symlink.
-- Bulk-feed providers cap the response body at 50 MB.
-- Passing keys via `--*-key` flags is **insecure** — they are visible to other local users via `ps`. Use env vars or the config file.
-
-Found a vulnerability? Open a private security advisory on GitHub.
 
 ---
 
