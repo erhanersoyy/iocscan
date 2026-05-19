@@ -231,3 +231,56 @@ def test_wide_flag_overrides_narrow_terminal():
     assert "Details" not in out
     # 15 columns (IOC + Verdict + 13 providers) → 14 "┳" joins in the header rule
     assert out.count("┳") >= 14
+
+
+# ---------------------------------------------------------------------------
+# Deeplinks: provider cells wrap in OSC 8 hyperlinks when providers passed
+# ---------------------------------------------------------------------------
+
+def _make_scan(ioc, ioc_type, verdict, results):
+    """Tiny helper to build a ScanResult from a list of ProviderResults."""
+    responding = sum(1 for r in results if r.verdict not in (Verdict.ERROR, Verdict.UNKNOWN))
+    return ScanResult(ioc, ioc_type, verdict, results, responding, len(results))
+
+
+def test_render_table_wraps_cells_in_link_markup_when_provider_has_permalink():
+    """Wide layout emits OSC 8 hyperlink escapes for provider cells with a permalink."""
+    from iocscan.providers.virustotal import VirusTotal
+
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=True, width=200, legacy_windows=False)
+    scan = _make_scan("1.2.3.4", IOCType.IP, Verdict.MALICIOUS, [
+        ProviderResult("virustotal", Verdict.MALICIOUS, "12/70", None, None, 100),
+    ])
+    render_table([scan], console, providers=[VirusTotal()])
+    out = buf.getvalue()
+    # OSC 8 hyperlink: \x1b]8;; ... \x1b\\
+    assert "\x1b]8;" in out, "expected OSC 8 hyperlink escape in output"
+    assert "virustotal.com/gui/ip-address/1.2.3.4" in out
+
+
+def test_render_table_compact_wraps_in_link_markup_when_provider_has_permalink():
+    """Compact layout also emits OSC 8 hyperlinks for provider cells with permalink."""
+    from iocscan.providers.virustotal import VirusTotal
+
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=True, width=80, legacy_windows=False)
+    scan = _make_scan("1.2.3.4", IOCType.IP, Verdict.MALICIOUS, [
+        ProviderResult("virustotal", Verdict.MALICIOUS, "12/70", None, None, 100),
+    ])
+    render_table([scan], console, narrow=True, providers=[VirusTotal()])
+    out = buf.getvalue()
+    assert "\x1b]8;" in out
+    assert "virustotal.com/gui/ip-address/1.2.3.4" in out
+
+
+def test_render_table_no_link_when_providers_not_supplied():
+    """Backwards-compat: omitting providers means no OSC 8 escape codes."""
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=True, width=200, legacy_windows=False)
+    scan = _make_scan("1.2.3.4", IOCType.IP, Verdict.MALICIOUS, [
+        ProviderResult("virustotal", Verdict.MALICIOUS, "12/70", None, None, 100),
+    ])
+    render_table([scan], console)
+    out = buf.getvalue()
+    assert "\x1b]8;" not in out

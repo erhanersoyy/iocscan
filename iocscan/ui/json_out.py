@@ -6,9 +6,16 @@ from datetime import datetime, timezone
 from iocscan import __version__
 from iocscan.core.ioc import to_defanged
 from iocscan.core.scan import ScanResult
+from iocscan.providers.base import Provider
 
 
-def render_json(scans: list[ScanResult], min_coverage: int, defang: bool = False) -> str:
+def render_json(
+    scans: list[ScanResult],
+    min_coverage: int,
+    defang: bool = False,
+    providers: list[Provider] | None = None,
+) -> str:
+    by_name = {p.name: p for p in (providers or [])}
     payload = {
         "scan": {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -29,6 +36,10 @@ def render_json(scans: list[ScanResult], min_coverage: int, defang: bool = False
                         "error": r.error,
                         "latency_ms": r.latency_ms,
                         "raw": r.raw,
+                        "permalink": (
+                            by_name[r.provider].permalink(s.ioc, s.ioc_type)
+                            if r.provider in by_name else None
+                        ),
                     }
                     for r in s.provider_results
                 },

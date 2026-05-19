@@ -63,3 +63,14 @@ class VirusTotal(Provider):
         else:
             v = Verdict.CLEAN
         return ProviderResult(self.name, v, score, data, None, latency)
+
+    def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
+        if ioc_type == IOCType.IP:
+            return f"https://www.virustotal.com/gui/ip-address/{ioc}"
+        if ioc_type == IOCType.DOMAIN:
+            return f"https://www.virustotal.com/gui/domain/{ioc}"
+        if ioc_type == IOCType.URL:
+            # Same encoding the API uses to identify a URL.
+            url_id = base64.urlsafe_b64encode(ioc.encode()).rstrip(b"=").decode()
+            return f"https://www.virustotal.com/gui/url/{url_id}"
+        return f"https://www.virustotal.com/gui/file/{ioc}"
