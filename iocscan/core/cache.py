@@ -6,6 +6,7 @@ import sqlite3
 import time
 from pathlib import Path
 
+from iocscan.core import observability as _obs
 from iocscan.providers.base import ProviderResult, Verdict
 
 SCHEMA = """
@@ -38,6 +39,9 @@ class Cache:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=3000")
         self._conn.executescript(SCHEMA)
+        # Observability shares this DB — apply its schema too so the table
+        # exists before the first `record_observations` write.
+        self._conn.executescript(_obs.SCHEMA)
         self._conn.commit()
         # WAL mode creates sibling -wal/-shm files; lock those down too so
         # they don't end up world-readable under a permissive umask.
@@ -80,6 +84,10 @@ class Cache:
                     for r in results
                 ],
             )
+
+    def record_observations(self, results: list[ProviderResult]) -> None:
+        """Append per-provider observations. Best-effort; never raises."""
+        _obs.record_results(self._conn, results)
 
     def clear(self) -> None:
         with self._conn:

@@ -70,7 +70,7 @@ def _read_inputs(args) -> list[str]:
     return items
 
 
-_SUBCOMMANDS = {"config", "cache", "providers", "whitelist", "explain"}
+_SUBCOMMANDS = {"config", "cache", "providers", "whitelist", "explain", "health"}
 
 
 def _build_scan_parser() -> argparse.ArgumentParser:
@@ -169,6 +169,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     wl_sub = wl_p.add_subparsers(dest="wl_cmd")
     wl_sub.add_parser("update", help="fetch latest Tranco top-1K and cache it")
     wl_sub.add_parser("stats", help="show whitelist cache status")
+
+    health_p = sub.add_parser(
+        "health",
+        help="per-provider operational health (last error, p95 latency, error rate)",
+    )
+    health_p.add_argument(
+        "--days", type=int, default=7,
+        help="lookback window in days (default: 7)",
+    )
     return p
 
 
@@ -242,6 +251,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "explain":
         from iocscan.explain import explain_main
         return explain_main(args, config)
+    if args.cmd == "health":
+        return _cmd_health(args, config)
     if args.list_themes:
         return _cmd_list_themes(args)
 
@@ -294,6 +305,9 @@ async def _run_scan(parsed, config, args) -> int:
                     scan = ScanResult(ioc, ioc_type, final_verdict, merged_results, resp, tot, whitelisted=whitelisted)
                 if cache:
                     cache.put(ioc, scan.provider_results)
+                    # Mirror cache's --no-cache opt-out: observability is also
+                    # skipped when the user explicitly disables persistence.
+                    cache.record_observations(scan.provider_results)
                 scans.append(scan)
 
         elapsed_ms = int((time.perf_counter() - start_wall) * 1000)
@@ -445,6 +459,61 @@ def _cmd_whitelist(args) -> int:
         return 0
     print("usage: iocscan whitelist {update|stats}", file=sys.stderr)
     return 3
+
+
+def _cmd_health(args, config) -> int:
+    """Render per-provider health from the observability table."""
+    from datetime import datetime
+
+    from rich import box
+    from rich.table import Table
+
+    from iocscan.core.observability import health_report
+
+    cache_path = Path(os.path.expanduser("~")) / ".iocscan" / "cache.db"
+    cache = Cache(cache_path, ttl_seconds=config.cache_ttl_hours * 3600)
+    try:
+        report = health_report(cache._conn, lookback_seconds=args.days * 86400)
+        if not report:
+            print(
+                f"no observations in the last {args.days} day(s); run iocscan first",
+                file=sys.stderr,
+            )
+            return 0
+
+        console = make_console()
+        t = Table(box=box.HEAVY_HEAD, show_header=True, header_style="bold")
+        t.add_column("provider")
+        t.add_column("samples", justify="right")
+        t.add_column("errors", justify="right")
+        t.add_column("err %", justify="right")
+        t.add_column("p95 ms", justify="right")
+        t.add_column("last error")
+        t.add_column("last 429")
+        t.add_column("last 5xx")
+
+        def _fmt_ts(ts):
+            return (
+                datetime.fromtimestamp(ts).isoformat(timespec="seconds")
+                if ts
+                else "—"
+            )
+
+        for p in report:
+            t.add_row(
+                p.provider,
+                str(p.samples),
+                str(p.error_count),
+                f"{p.error_rate * 100:.1f}",
+                str(p.p95_latency_ms) if p.p95_latency_ms is not None else "—",
+                _fmt_ts(p.last_error_at),
+                _fmt_ts(p.last_429_at),
+                _fmt_ts(p.last_5xx_at),
+            )
+        console.print(t)
+        return 0
+    finally:
+        cache.close()
 
 
 def _cmd_providers(config) -> int:
