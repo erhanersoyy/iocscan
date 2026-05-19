@@ -43,7 +43,9 @@ class URLScan(Provider):
         try:
             data = resp.json()
             results = data.get("results") or []
-            total = int(data.get("total", len(results)))
+            # `.get("total") or len(results)` covers both "missing" and
+            # explicit null — int(None) would otherwise raise TypeError.
+            total = int(data.get("total") or len(results))
         except (ValueError, TypeError):
             return ProviderResult(self.name, Verdict.ERROR, "", None, "parse error", latency)
         if total == 0:

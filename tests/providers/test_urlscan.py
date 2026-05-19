@@ -71,6 +71,13 @@ async def test_api_key_header_when_configured():
     assert captured["auth"] == "KEY"
 
 
+async def test_null_total_treated_as_zero():
+    """API edge: `total: null` must not raise; fall back to len(results)."""
+    async with _c(lambda req: httpx.Response(200, json={"results": [], "total": None})) as c:
+        r = await URLScan().lookup("https://x.com/", IOCType.URL, c, Config())
+    assert r.verdict == Verdict.CLEAN
+
+
 async def test_429_rate_limit():
     async with _c(lambda req: httpx.Response(429)) as c:
         r = await URLScan().lookup("https://x.com/", IOCType.URL, c, Config())
