@@ -239,3 +239,25 @@ async def test_scan_ioc_excludes_enrichment_only_from_verdict():
     assert result.verdict == Verdict.CLEAN
     assert result.total == 3       # 3 voters; enrichment excluded
     assert any(r.provider == "enrich" for r in result.provider_results)
+
+
+async def test_shodan_enrichment_row_in_results_but_excluded_from_coverage():
+    """ShodanInternetDB is enrichment_only — its row must be visible to the
+    user but excluded from the verdict's responding/total denominator."""
+    from iocscan.providers.shodan_internetdb import ShodanInternetDB
+
+    voters = [_Voting(f"voter_{i}", Verdict.CLEAN) for i in range(3)]
+
+    # Subclass so we can stub the HTTP call without a MockTransport client
+    class _StubShodan(ShodanInternetDB):
+        async def lookup(self, ioc, ioc_type, client, config):
+            return ProviderResult(self.name, Verdict.SUSPICIOUS, "5 ports, 1 vulns", None, None, 0)
+
+    providers = voters + [_StubShodan()]
+    async with httpx.AsyncClient() as client:
+        result = await scan_ioc("1.2.3.4", IOCType.IP, providers, client, Config())
+    assert result.verdict == Verdict.CLEAN
+    # Shodan row visible to user
+    assert any(r.provider == "shodan_internetdb" for r in result.provider_results)
+    # but excluded from coverage
+    assert result.total == 3
