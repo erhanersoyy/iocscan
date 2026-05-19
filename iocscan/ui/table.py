@@ -24,6 +24,7 @@ PROVIDER_ORDER = [
     "virustotal", "abuseipdb", "otx", "greynoise",
     "malwarebazaar", "yaraify",
     "urlscan",
+    "shodan_internetdb",
 ]
 
 # Display-only short labels for column headers. Internal provider names
@@ -32,6 +33,7 @@ PROVIDER_LABELS = {
     "virustotal": "vt",
     "abuseipdb": "abuseip",
     "malwarebazaar": "mb",
+    "shodan_internetdb": "shodan",
 }
 
 VERDICT_STYLES = {
