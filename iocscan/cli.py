@@ -248,8 +248,12 @@ async def _run_scan(parsed, config, args) -> int:
                 scan = await scan_ioc(ioc, ioc_type, providers_to_query, client, config)
                 if cached:
                     merged_results = list(cached.values()) + scan.provider_results
-                    v = aggregate(merged_results, min_coverage=config.min_coverage)
-                    resp, tot = coverage(merged_results)
+                    enrichment_only = {p.name for p in ALL_PROVIDERS if p.enrichment_only}
+                    v = aggregate(
+                        merged_results, min_coverage=config.min_coverage,
+                        enrichment_only=enrichment_only,
+                    )
+                    resp, tot = coverage(merged_results, enrichment_only=enrichment_only)
                     final_verdict, whitelisted = _apply_whitelist(ioc, ioc_type, v)
                     scan = ScanResult(ioc, ioc_type, final_verdict, merged_results, resp, tot, whitelisted=whitelisted)
                 if cache:

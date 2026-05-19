@@ -16,10 +16,15 @@ WEIGHTS = {
 
 
 def aggregate(
-    results: list[ProviderResult], *, min_coverage: int = MIN_COVERAGE_DEFAULT
+    results: list[ProviderResult],
+    *,
+    min_coverage: int = MIN_COVERAGE_DEFAULT,
+    enrichment_only: set[str] | None = None,
 ) -> Verdict:
+    enrichment_only = enrichment_only or set()
+    voting = [r for r in results if r.provider not in enrichment_only]
     responding = [
-        r for r in results
+        r for r in voting
         if r.verdict not in (Verdict.ERROR, Verdict.UNKNOWN)
     ]
     if len(responding) < min_coverage:
@@ -43,9 +48,15 @@ def aggregate(
     return Verdict.CLEAN
 
 
-def coverage(results: list[ProviderResult]) -> tuple[int, int]:
+def coverage(
+    results: list[ProviderResult],
+    *,
+    enrichment_only: set[str] | None = None,
+) -> tuple[int, int]:
+    enrichment_only = enrichment_only or set()
+    voting = [r for r in results if r.provider not in enrichment_only]
     responding = sum(
-        1 for r in results
+        1 for r in voting
         if r.verdict not in (Verdict.ERROR, Verdict.UNKNOWN)
     )
-    return responding, len(results)
+    return responding, len(voting)
