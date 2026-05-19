@@ -62,6 +62,10 @@ iocscan understands common defanged formats (`evil[.]com`, `1[.]2[.]3[.]4`, `hxx
 
 ## Reading the output
 
+Example scan of a mixed batch of IPs and domains (default `solarized-dark` theme, wide table):
+
+![iocscan example output](test_output.png)
+
 iocscan renders a **wide** table when the terminal is at least 100 columns and a **compact** table when it isn't. Use `--narrow` to force compact or `--wide` to force wide. Add `--no-color` to disable ANSI colors, `--ascii` to swap Unicode glyphs for `[!]`/`[~]`/`[ ]`/etc. fallbacks (also honors the standard `NO_COLOR` / `FORCE_COLOR` env vars).
 
 ### Themes
@@ -342,17 +346,6 @@ The cache lives at `~/.iocscan/tranco-1k.txt`. Re-run `update` weekly to keep it
 - **All results say `429 rate limit`** — you're hitting free-tier limits. Wait, or add a key for higher-tier providers (GreyNoise especially).
 - **Exit code 5 (all unknown)** — fewer than 3 providers responded. Add more API keys; see `python -m iocscan providers`.
 - **Verbose troubleshooting** — `python -m iocscan --debug ...` logs each provider call to stderr (no API keys are logged).
-
----
-
-## Security
-
-- API keys are stored at `~/.iocscan/config.toml` with mode `0600` and the parent directory at `0700`. Writes are atomic (tmp + rename).
-- The SQLite cache refuses to open if it's a symlink.
-- Bulk-feed providers cap the response body at 50 MB.
-- Passing keys via `--*-key` flags is **insecure** — they are visible to other local users via `ps`. Use env vars or the config file.
-
-Found a vulnerability? Open a private security advisory on GitHub.
 
 ---
 
