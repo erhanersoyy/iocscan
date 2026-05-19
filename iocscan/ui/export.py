@@ -51,13 +51,27 @@ def _render_jsonl(scans: list[ScanResult], *, defang: bool) -> str:
     return "\n".join(lines)
 
 
+_CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value: object) -> object:
+    # Defense-in-depth against spreadsheet formula injection (CVE class).
+    # parse_iocs already strips most of these, but a defanged form like
+    # `=cmd|...` could in principle survive a future regex relaxation.
+    # Not applied to the TSV (`--quiet`) output, whose consumer is
+    # grep/awk-style pipelines that would break on the leading apostrophe.
+    if isinstance(value, str) and value.startswith(_CSV_INJECTION_PREFIXES):
+        return "'" + value
+    return value
+
+
 def _render_csv(scans: list[ScanResult], *, defang: bool) -> str:
     buf = io.StringIO()
     w = _csv.writer(buf)
     w.writerow(["ioc", "type", "verdict", "responding", "total", "whitelisted"])
     for s in scans:
         w.writerow([
-            _ioc(s, defang),
+            _csv_safe(_ioc(s, defang)),
             s.ioc_type.value,
             s.verdict.value,
             s.responding,

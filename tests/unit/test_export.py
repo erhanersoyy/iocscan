@@ -60,6 +60,20 @@ def test_csv_quotes_commas_in_iocs():
     assert '"ev,il.com"' in out
 
 
+def test_csv_prefixes_formula_injection_payloads():
+    """Cells starting with =/+/-/@/tab/cr must be defanged with a leading apostrophe.
+
+    Defense-in-depth against spreadsheet formula injection — parse_iocs would
+    reject these characters today, but the export layer should not rely on
+    upstream filtering.
+    """
+    for payload in ("=cmd|'/c calc'!A1", "+1+1", "-2+3", "@SUM(A1)", "\t=evil"):
+        out = render_export([_scan(payload, Verdict.CLEAN, IOCType.DOMAIN)], "csv")
+        reader = csv.reader(io.StringIO(out))
+        rows = list(reader)
+        assert rows[1][0].startswith("'"), f"payload not prefixed: {payload!r} -> {rows[1][0]!r}"
+
+
 def test_csv_respects_defang():
     out = render_export([_scan("1.2.3.4", Verdict.CLEAN)], "csv", defang=True)
     reader = csv.reader(io.StringIO(out))

@@ -73,7 +73,7 @@ def _format_verdict_cell(s: ScanResult, *, ascii_only: bool) -> str:
     text = f"[{style}]{glyph} {s.verdict.value}[/] ({s.responding}/{s.total})"
     if s.whitelisted:
         wl = whitelist_glyph(ascii_only=ascii_only)
-        text += f" [verdict.whitelisted]{wl} Top 1k[/]"
+        text += f" [verdict.whitelisted]{wl} whitelisted[/]"
     return text
 
 

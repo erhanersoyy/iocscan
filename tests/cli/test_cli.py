@@ -120,6 +120,19 @@ def test_cli_file_too_large_exits_3(tmp_home, capsys, tmp_path, monkeypatch):
     assert "too large" in captured.err.lower()
 
 
+def test_cli_file_symlink_refused_exits_3(tmp_home, capsys, tmp_path):
+    """-f with a symlinked input file must exit 3 — mirrors the cache.db symlink guard."""
+    target = tmp_path / "real.txt"
+    target.write_text("8.8.8.8\n")
+    link = tmp_path / "link.txt"
+    link.symlink_to(target)
+    rc = main(["-f", str(link)])
+    captured = capsys.readouterr()
+    assert rc == 3
+    assert "Traceback" not in captured.err
+    assert "symlink" in captured.err.lower()
+
+
 def test_cli_file_binary_exits_3(tmp_home, capsys, tmp_path):
     """-f with a non-UTF-8 file must exit 3, not crash with UnicodeDecodeError."""
     f = tmp_path / "binary.bin"

@@ -39,6 +39,11 @@ def _read_inputs(args) -> list[str]:
     if args.file:
         try:
             path = Path(args.file)
+            # Symlink rejection mirrors the cache.db guard: never follow a link
+            # for user-supplied paths (could be re-pointed to a sensitive file
+            # like ~/.iocscan/config.toml between checks).
+            if path.is_symlink():
+                raise ValueError(f"input file is a symlink (refused): {args.file}")
             size = path.stat().st_size
             if size > _MAX_INPUT_BYTES:
                 raise ValueError(
