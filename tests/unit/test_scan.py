@@ -212,14 +212,14 @@ async def test_scan_propagates_asyncio_cancelled_error():
 
 
 class _Voting(Provider):
-    name = "voting"
     supports = {IOCType.IP}
 
-    def __init__(self, verdict):
+    def __init__(self, name: str, verdict):
+        self.name = name
         self._v = verdict
 
     async def lookup(self, ioc, ioc_type, client, config):
-        return ProviderResult(self.name + str(id(self)), self._v, "", None, None, 0)
+        return ProviderResult(self.name, self._v, "", None, None, 0)
 
 
 class _Enrichment(Provider):
@@ -231,19 +231,11 @@ class _Enrichment(Provider):
         return ProviderResult(self.name, Verdict.MALICIOUS, "", None, None, 0)
 
 
-def test_scan_ioc_excludes_enrichment_only_from_verdict():
-    import asyncio
-
-    async def run():
-        voters = [_Voting(Verdict.CLEAN) for _ in range(3)]
-        # Give each a distinct name (the default _Voting.name collides)
-        for i, v in enumerate(voters):
-            v.name = f"voter_{i}"
-        providers = voters + [_Enrichment()]
-        async with httpx.AsyncClient() as client:
-            return await scan_ioc("1.2.3.4", IOCType.IP, providers, client, Config())
-
-    result = asyncio.run(run())
+async def test_scan_ioc_excludes_enrichment_only_from_verdict():
+    voters = [_Voting(f"voter_{i}", Verdict.CLEAN) for i in range(3)]
+    providers = voters + [_Enrichment()]
+    async with httpx.AsyncClient() as client:
+        result = await scan_ioc("1.2.3.4", IOCType.IP, providers, client, Config())
     assert result.verdict == Verdict.CLEAN
     assert result.total == 3       # 3 voters; enrichment excluded
     assert any(r.provider == "enrich" for r in result.provider_results)
