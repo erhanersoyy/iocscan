@@ -31,6 +31,8 @@ class ShodanInternetDB(Provider):
             return ProviderResult(self.name, Verdict.UNKNOWN, "—", None, None, latency)
         if resp.status_code == 429:
             return ProviderResult(self.name, Verdict.ERROR, "", None, "429 rate limit", latency)
+        if resp.status_code in (401, 403):
+            return ProviderResult(self.name, Verdict.ERROR, "", None, "auth failed", latency)
         if resp.status_code >= 500:
             return ProviderResult(self.name, Verdict.ERROR, "", None, f"{resp.status_code} server", latency)
         if resp.status_code >= 400:
