@@ -19,12 +19,17 @@ import json
 
 from iocscan.core.ioc import to_defanged
 from iocscan.core.scan import ScanResult
+from iocscan.ui.hunt import HUNT_FORMATS, render_hunt
 
 
-EXPORT_FORMATS = ("jsonl", "csv", "markdown")
+EXPORT_FORMATS = ("jsonl", "csv", "markdown") + HUNT_FORMATS
 
 
 def render_export(scans: list[ScanResult], fmt: str, *, defang: bool = False) -> str:
+    if fmt in HUNT_FORMATS:
+        # Hunt-query emitters don't defang — analysts paste the result
+        # straight into a SIEM/EDR which expects the raw IOC form.
+        return render_hunt(scans, fmt)
     if fmt == "jsonl":
         return _render_jsonl(scans, defang=defang)
     if fmt == "csv":
