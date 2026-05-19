@@ -22,3 +22,17 @@ def test_keyless_and_keyed_counts():
     keyed = [p for p in ALL_PROVIDERS if p.requires_key]
     assert len(keyless) == 6   # URLhaus, ThreatFox, Feodo, Tor, Spamhaus, GreyNoise
     assert len(keyed) == 5     # VirusTotal, AbuseIPDB, OTX, MalwareBazaar, YARAify
+
+
+def test_mb_yaraify_has_key_via_abusech_alias():
+    from iocscan.core.config import Config
+    from iocscan.providers.malwarebazaar import MalwareBazaar
+    from iocscan.providers.yaraify import YARAify
+
+    cfg = Config(keys={"abusech": "K"})
+    assert MalwareBazaar().has_key(cfg) is True
+    assert YARAify().has_key(cfg) is True
+
+    cfg_empty = Config()
+    assert MalwareBazaar().has_key(cfg_empty) is False
+    assert YARAify().has_key(cfg_empty) is False
