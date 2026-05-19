@@ -15,6 +15,7 @@ class YARAify(Provider):
     name = "yaraify"
     supports = {IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256}
     requires_key = True
+    key_alias = "abusech"
     max_rps = 5.0
 
     async def lookup(

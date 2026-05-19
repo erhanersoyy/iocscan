@@ -42,6 +42,11 @@ class Provider(ABC):
     name: str
     supports: set[IOCType]
     requires_key: bool = False
+    # Optional override: when set, has_key() (and any future plumbing)
+    # reads the config under this name instead of `self.name`. Used by
+    # providers that share a vendor key (e.g. abuse.ch MalwareBazaar /
+    # YARAify / URLhaus / ThreatFox all key under "abusech").
+    key_alias: str | None = None
     max_rps: float | None = None
     max_per_day: int | None = None
     enrichment_only: bool = False
@@ -52,7 +57,9 @@ class Provider(ABC):
     ) -> ProviderResult: ...
 
     def has_key(self, config: "Config") -> bool:
-        return not self.requires_key or bool(config.key_for(self.name))
+        if not self.requires_key:
+            return True
+        return bool(config.key_for(self.key_alias or self.name))
 
     def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
         """Return a human-clickable URL to the provider's web UI for this IOC.
