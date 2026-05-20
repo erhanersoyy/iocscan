@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from rich.console import Console
+from rich.markup import escape as _escape
 from rich.panel import Panel
 
 from iocscan.core.cache import Cache
@@ -33,9 +34,12 @@ def _provider_panel(
     result: ProviderResult, provider: Provider, ioc: str, ioc_type: IOCType,
 ) -> Panel:
     glyph = verdict_glyph(result.verdict, ascii_only=False)
-    lines: list[str] = [f"score:     {result.score or '—'}"]
+    # Provider-controlled strings (score, error, raw) are escaped before
+    # being handed to rich — a hostile WHOIS field could otherwise smuggle
+    # `[link=file://…]` or `[red]` markup into the panel.
+    lines: list[str] = [f"score:     {_escape(result.score or '—')}"]
     if result.error:
-        lines.append(f"error:     {result.error}")
+        lines.append(f"error:     {_escape(result.error)}")
     lines.append(f"latency:   {result.latency_ms} ms")
 
     permalink = provider.permalink(ioc, ioc_type)
@@ -54,7 +58,7 @@ def _provider_panel(
         if len(raw_str) > _RAW_LIMIT:
             raw_str = raw_str[:_RAW_LIMIT] + "…"
         lines.append("raw:")
-        lines.append(raw_str)
+        lines.append(_escape(raw_str))
 
     return Panel(
         "\n".join(lines),
