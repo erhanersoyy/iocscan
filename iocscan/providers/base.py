@@ -36,6 +36,7 @@ class ProviderResult:
     raw: dict | None
     error: str | None
     latency_ms: int
+    details: tuple[str, ...] = ()
 
 
 class Provider(ABC):
