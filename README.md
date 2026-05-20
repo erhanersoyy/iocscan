@@ -43,6 +43,42 @@ iocscan understands common defanged formats (`evil[.]com`, `1[.]2[.]3[.]4`, `hxx
 > Tip: if `python -m iocscan ...` feels verbose, add an alias to your shell rc:
 > `alias iocscan='python -m iocscan'` — then everything below works as `iocscan ...`.
 
+### Single-IOC aliases for common SOC tasks
+
+Most triage hits are a single IOC at a time. Drop these into `~/.zshrc` / `~/.bashrc`
+and they become muscle memory:
+
+```bash
+# 1) Quick verdict — minimum noise, just the line: "ioc<TAB>verdict<TAB>n/m"
+alias ti='python -m iocscan --quiet'                          # ti 1.2.3.4
+
+# 2) Full evidence — every provider's cell, wide table forced
+alias ti-full='python -m iocscan --wide --no-cache'           # ti-full evil.com
+
+# 3) Defanged output for tickets / email / chat (no auto-link)
+alias ti-safe='python -m iocscan --defang --quiet'            # ti-safe 1.2.3.4
+
+# 4) Explain mode — show *why* the verdict is what it is (per-provider reasoning)
+alias ti-why='python -m iocscan explain'                      # ti-why 1.2.3.4
+
+# 5) JSON for piping into jq / SIEM / Slack bot
+alias ti-json='python -m iocscan --format json'               # ti-json evil.com | jq .
+alias ti-vt='python -m iocscan --format json'                 # ti-vt 1.2.3.4 | jq '.results[0].providers.virustotal'
+
+# 6) Hyperlinked cells (terminal-rendered underline) — opt in when you actually want to click through
+alias ti-link='python -m iocscan --cell-links --wide'         # ti-link 1.2.3.4
+
+# 7) Hunt-query emit — turn one IOC into a Splunk / Sentinel / Defender search string
+alias ti-splunk='python -m iocscan -F splunk-spl'             # ti-splunk 1.2.3.4
+alias ti-sentinel='python -m iocscan -F kql-sentinel'         # ti-sentinel evil.com
+alias ti-defender='python -m iocscan -F kql-defender'         # ti-defender 1.2.3.4
+
+# 8) Skip cache for a fresh look (useful right after publishing a blocklist update)
+alias ti-fresh='python -m iocscan --no-cache --wide'          # ti-fresh 1.2.3.4
+```
+
+Pick the two or three you actually use. The point is: one IOC → one short command.
+
 ---
 
 ## Reading the output

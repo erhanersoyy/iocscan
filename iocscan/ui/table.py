@@ -55,6 +55,29 @@ _NUMERIC_PROVIDERS = {"virustotal", "abuseipdb", "otx"}
 
 AUTO_NARROW_THRESHOLD = 100
 
+# Fallback gray when the active console has no `table.border` theme entry
+# (e.g. bare Console() in tests). Picked to be visible-but-dim on both
+# dark and light terminals.
+_BORDER_FALLBACK = "grey37"
+
+
+def _border_style(console: Console) -> str:
+    """Resolve the table.border theme entry, with a literal-color fallback.
+
+    Rich's Table accepts a style string for ``border_style`` but does not
+    look it up against the console's theme — Style.parse() treats it as a
+    raw color. So we resolve manually: if the console has a theme entry,
+    return its color spec as a plain string; otherwise fall back to a
+    dim gray that works on both light and dark backgrounds.
+    """
+    try:
+        style = console.get_style("table.border")
+    except Exception:
+        return _BORDER_FALLBACK
+    if style is None or style.color is None:
+        return _BORDER_FALLBACK
+    return str(style)
+
 
 def render_table(
     scans: list[ScanResult],
@@ -64,13 +87,18 @@ def render_table(
     ascii_only: bool = False,
     defang: bool = False,
     providers: list[Provider] | None = None,
+    links: bool = False,
 ) -> None:
+    # Links default off: terminals add their own dotted underline to OSC 8
+    # hyperlinks (terminal-rendered, not SGR-controllable), which clutters
+    # the table. Opt-in via --links when click-through is needed.
+    link_providers = providers if links else None
     if wide:
-        _render_wide(scans, console, ascii_only=ascii_only, defang=defang, providers=providers)
+        _render_wide(scans, console, ascii_only=ascii_only, defang=defang, providers=link_providers)
     elif narrow or console.width < AUTO_NARROW_THRESHOLD:
-        _render_compact(scans, console, ascii_only=ascii_only, defang=defang, providers=providers)
+        _render_compact(scans, console, ascii_only=ascii_only, defang=defang, providers=link_providers)
     else:
-        _render_wide(scans, console, ascii_only=ascii_only, defang=defang, providers=providers)
+        _render_wide(scans, console, ascii_only=ascii_only, defang=defang, providers=link_providers)
 
 
 def _display_ioc(ioc: str, *, defang: bool) -> str:
@@ -83,7 +111,7 @@ def _format_verdict_cell(s: ScanResult, *, ascii_only: bool) -> str:
     text = f"[{style}]{glyph} {s.verdict.value}[/] ({s.responding}/{s.total})"
     if s.whitelisted:
         wl = whitelist_glyph(ascii_only=ascii_only)
-        text += f" [verdict.whitelisted]{wl} whitelisted[/]"
+        text += f" [verdict.whitelisted]{wl} 1k[/]"
     return text
 
 
@@ -93,13 +121,15 @@ def _format_provider_cell(result, *, ascii_only: bool, permalink: str | None = N
     When ``permalink`` is supplied, wrap the cell in rich's ``[link=URL]…[/link]``
     markup so capable terminals emit an OSC 8 hyperlink. The URL is left as-is
     (provider templates use only ASCII-safe URL-encoded characters; ``]`` would
-    break rich markup, so callers must keep templates clean).
+    break rich markup, so callers must keep templates clean). Terminals that
+    render OSC 8 hyperlinks add their own underline that cannot be suppressed
+    from the application side, so callers pass ``permalink=None`` to keep
+    cells visually clean.
     """
     if result.verdict == Verdict.ERROR:
         glyph = (classify_error_ascii if ascii_only else classify_error)(result.error)
         body = f"[verdict.error]{glyph} {_escape(result.error) if result.error else 'err'}[/]"
     elif not result.score or result.score == "—":
-        # Provider ran but produced no score (blocklist miss, 0 detections).
         cell_no = CELL_NO_RECORD_ASCII if ascii_only else CELL_NO_RECORD
         body = f"[{VERDICT_STYLES[result.verdict]}]{cell_no}[/]"
     else:
@@ -118,6 +148,8 @@ def _render_wide(
         show_header=True,
         header_style="bold",
         padding=(0, 1),
+        show_lines=True,
+        border_style=_border_style(console),
     )
     t.add_column("IOC", overflow="fold")
     t.add_column("Verdict")
@@ -154,6 +186,8 @@ def _render_compact(
         show_header=True,
         header_style="bold",
         padding=(0, 1),
+        show_lines=True,
+        border_style=_border_style(console),
     )
     t.add_column("IOC", overflow="fold")
     t.add_column("Verdict")
