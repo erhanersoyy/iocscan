@@ -55,19 +55,19 @@ def test_table_shows_coverage_in_verdict_cell():
     assert "(4/16)" in out
 
 
-def test_table_whitelist_flag_renders_as_whitelisted():
-    """Whitelisted rows show '⚑ whitelisted' in the verdict cell.
+def test_table_whitelist_flag_renders_as_1k():
+    """Whitelisted rows show the '⚑ 1k' suffix in the verdict cell.
 
-    The label covers both bundled critical-infra domains and the Tranco
-    top-1K list — so a source-specific label like 'Top 1k' would be
-    misleading for bundled hits.
+    '1k' is a deliberate shorthand: the whitelist combines a small bundle
+    of critical-infra domains with the Tranco top-1K, and users wanted a
+    compact tag that does not steal column width.
     """
     scan = ScanResult(
         "cloudflare.com", IOCType.DOMAIN, Verdict.CLEAN, [], 0, 16, whitelisted=True
     )
     out = _render([scan])
-    assert "whitelisted" in out
-    assert "Top 1k" not in out
+    assert "1k" in out
+    assert "whitelisted" not in out
     assert "⚑" in out
 
 
@@ -247,8 +247,44 @@ def _make_scan(ioc, ioc_type, verdict, results):
     return ScanResult(ioc, ioc_type, verdict, results, responding, len(results))
 
 
-def test_render_table_wraps_cells_in_link_markup_when_provider_has_permalink():
-    """Wide layout emits OSC 8 hyperlink escapes for provider cells with a permalink."""
+def test_render_table_wraps_cells_in_link_markup_when_opted_in():
+    """Wide layout emits OSC 8 hyperlinks only when ``links=True`` is set."""
+    from iocscan.providers.virustotal import VirusTotal
+
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=True, width=200, legacy_windows=False)
+    scan = _make_scan("1.2.3.4", IOCType.IP, Verdict.MALICIOUS, [
+        ProviderResult("virustotal", Verdict.MALICIOUS, "12/70", None, None, 100),
+    ])
+    render_table([scan], console, providers=[VirusTotal()], links=True)
+    out = buf.getvalue()
+    # OSC 8 hyperlink: \x1b]8;; ... \x1b\\
+    assert "\x1b]8;" in out, "expected OSC 8 hyperlink escape in output"
+    assert "virustotal.com/gui/ip-address/1.2.3.4" in out
+
+
+def test_render_table_compact_wraps_in_link_markup_when_opted_in():
+    """Compact layout also emits OSC 8 hyperlinks only when ``links=True``."""
+    from iocscan.providers.virustotal import VirusTotal
+
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=True, width=80, legacy_windows=False)
+    scan = _make_scan("1.2.3.4", IOCType.IP, Verdict.MALICIOUS, [
+        ProviderResult("virustotal", Verdict.MALICIOUS, "12/70", None, None, 100),
+    ])
+    render_table([scan], console, narrow=True, providers=[VirusTotal()], links=True)
+    out = buf.getvalue()
+    assert "\x1b]8;" in out
+    assert "virustotal.com/gui/ip-address/1.2.3.4" in out
+
+
+def test_render_table_omits_link_markup_by_default():
+    """Default behavior: even when providers are supplied, no OSC 8 escapes.
+
+    Terminals render OSC 8 with a dotted underline that the application
+    cannot suppress, so links are off by default to keep the table clean.
+    Opt-in with ``links=True`` (or the ``--cell-links`` CLI flag).
+    """
     from iocscan.providers.virustotal import VirusTotal
 
     buf = StringIO()
@@ -258,24 +294,7 @@ def test_render_table_wraps_cells_in_link_markup_when_provider_has_permalink():
     ])
     render_table([scan], console, providers=[VirusTotal()])
     out = buf.getvalue()
-    # OSC 8 hyperlink: \x1b]8;; ... \x1b\\
-    assert "\x1b]8;" in out, "expected OSC 8 hyperlink escape in output"
-    assert "virustotal.com/gui/ip-address/1.2.3.4" in out
-
-
-def test_render_table_compact_wraps_in_link_markup_when_provider_has_permalink():
-    """Compact layout also emits OSC 8 hyperlinks for provider cells with permalink."""
-    from iocscan.providers.virustotal import VirusTotal
-
-    buf = StringIO()
-    console = Console(file=buf, force_terminal=True, width=80, legacy_windows=False)
-    scan = _make_scan("1.2.3.4", IOCType.IP, Verdict.MALICIOUS, [
-        ProviderResult("virustotal", Verdict.MALICIOUS, "12/70", None, None, 100),
-    ])
-    render_table([scan], console, narrow=True, providers=[VirusTotal()])
-    out = buf.getvalue()
-    assert "\x1b]8;" in out
-    assert "virustotal.com/gui/ip-address/1.2.3.4" in out
+    assert "\x1b]8;" not in out
 
 
 def test_render_table_no_link_when_providers_not_supplied():

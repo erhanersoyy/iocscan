@@ -102,6 +102,10 @@ def _build_scan_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--list-themes", action="store_true", help="show one-line preview of each theme then exit")
     p.add_argument("--defang", action="store_true", help="render IOCs in defanged form (1.2.3[.]4) in table/JSON/TSV output")
+    p.add_argument(
+        "--cell-links", action="store_true",
+        help="emit OSC 8 hyperlinks on provider cells (terminal adds an underline); off by default",
+    )
     p.add_argument("--quiet", "-q", action="store_true", help="suppress table + footer; emit TSV one line per IOC (IOC\\tverdict\\tcoverage)")
     p.add_argument(
         "--links-only", action="store_true",
@@ -203,6 +207,7 @@ def main(argv: list[str] | None = None) -> int:
         args.theme = os.environ.get("IOCSCAN_THEME", DEFAULT_THEME)
         args.list_themes = False
         args.defang = False
+        args.cell_links = False
         args.quiet = False
         args.links_only = False
         args.sort = "input"
@@ -379,6 +384,7 @@ async def _run_scan(parsed, config, args) -> int:
                 narrow=args.narrow, wide=args.wide,
                 ascii_only=args.ascii, defang=args.defang,
                 providers=ALL_PROVIDERS,
+                links=args.cell_links,
             )
             if console.is_terminal and len(scans_out) > 0:
                 render_summary(
