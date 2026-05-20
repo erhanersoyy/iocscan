@@ -59,14 +59,32 @@ def _has_any(by_type: dict[IOCType, list[str]]) -> bool:
     return any(by_type.values())
 
 
-# Quote helpers — keep inputs free of injection. Our parser already
-# rejects anything with whitespace or shell metas, but defense in depth.
+# Quote helpers — defense-in-depth against SIEM-query injection.
+# The IP / DOMAIN / HASH parsers reject characters that would break
+# downstream syntax, but URL IOCs go through `urlparse` which is more
+# permissive. _detect_url in core/ioc.py now refuses URLs carrying
+# unencoded quotes / whitespace / control chars, but we still escape
+# at emission so a regression upstream cannot smuggle clauses into
+# the analyst's SIEM.
+_BS = "\\"
+_DQ = '"'
+_SQ = "'"
+
+
+def _esc_dq(s: str) -> str:
+    return s.replace(_BS, _BS + _BS).replace(_DQ, _BS + _DQ)
+
+
+def _esc_sq(s: str) -> str:
+    return s.replace(_BS, _BS + _BS).replace(_SQ, _BS + _SQ)
+
+
 def _q_dq(values: list[str]) -> str:
-    return ", ".join(f'"{v}"' for v in values)
+    return ", ".join(f'"{_esc_dq(v)}"' for v in values)
 
 
 def _q_sq(values: list[str]) -> str:
-    return ", ".join(f"'{v}'" for v in values)
+    return ", ".join(f"'{_esc_sq(v)}'" for v in values)
 
 
 def _splunk_spl(by: dict[IOCType, list[str]]) -> str:
