@@ -135,3 +135,31 @@ def test_unknown_format_raises():
     scans = [_scan("1.1.1.1", IOCType.IP, Verdict.MALICIOUS)]
     with pytest.raises(ValueError):
         render_hunt(scans, "no-such-format")
+
+
+# ---- defense-in-depth: SIEM-query injection escape ----
+
+def test_q_dq_escapes_embedded_double_quotes():
+    """Even if a quote-bearing string reaches the emitter, it must be
+    backslash-escaped so the SIEM parser sees a single literal value."""
+    from iocscan.ui.hunt import _q_dq
+    crafted = 'evil.com/x" OR url IN ("y'
+    out = _q_dq([crafted])
+    # The output string is wrapped in double quotes; the inner `"` must be
+    # `\"` so the SIEM tokenizer keeps everything inside the same literal.
+    assert out == '"evil.com/x\\" OR url IN (\\"y"'
+
+
+def test_q_sq_escapes_embedded_single_quotes():
+    from iocscan.ui.hunt import _q_sq
+    crafted = "evil.com/x' OR url='y"
+    out = _q_sq([crafted])
+    assert out == "'evil.com/x\\' OR url=\\'y'"
+
+
+def test_q_dq_escapes_backslash_first():
+    """A bare `\\"` would otherwise become `\\"\\"` (i.e. valid escape + new
+    quote); we must escape backslashes before quotes."""
+    from iocscan.ui.hunt import _q_dq
+    out = _q_dq(["a\\b"])
+    assert out == '"a\\\\b"'

@@ -66,9 +66,21 @@ def to_defanged(s: str) -> str:
     return s.replace(".", "[.]")
 
 
+# Characters that must not appear unencoded inside a URL IOC. Real-world
+# URLs URL-encode these (`%20`, `%22`, ...); leaving them raw is almost
+# always a sign of an injection-crafted IOC. Rejecting them at parse time
+# keeps unsafe strings out of hunt-query emitters (ui/hunt.py) and other
+# downstream sinks that interpolate the URL into platform-specific
+# syntaxes (Splunk SPL, KQL, FQL, Elastic EQL/Lucene).
+_URL_UNSAFE_CHARS = frozenset('"\'`\\ \t\r\n\v\f')
+
+
 def _detect_url(refanged: str) -> bool:
-    """True if value is a well-formed http(s) URL with a host."""
+    """True if value is a well-formed http(s) URL with a host and no
+    unencoded quotes / whitespace / control characters."""
     if "://" not in refanged:
+        return False
+    if any(ch in _URL_UNSAFE_CHARS or ord(ch) < 0x20 for ch in refanged):
         return False
     try:
         p = urlparse(refanged)

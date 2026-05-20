@@ -54,6 +54,21 @@ def test_parse_iocs_url_refangs_hxxp():
     assert parsed == [("https://evil.com/path", IOCType.URL)]
 
 
+@pytest.mark.parametrize("crafted", [
+    'https://evil.com/path" OR url IN ("',            # double-quote smuggling
+    "https://evil.com/path' OR url IN ('",            # single-quote smuggling
+    "https://evil.com/path with space",                # raw whitespace
+    "https://evil.com/path\twith\ttabs",               # control whitespace
+    "https://evil.com/path\nwith\nnewlines",           # CRLF
+    "https://evil.com/path`with`backtick",             # shell meta
+    "https://evil.com/path\\with\\backslash",          # backslash
+])
+def test_detect_type_rejects_unsafe_url_chars(crafted):
+    """SIEM-query-injection defense: unencoded quotes, whitespace, and
+    control characters must NOT survive into a URL IOC."""
+    assert detect_type(crafted) is None
+
+
 def test_parse_iocs_url_preserves_port():
     """URL normalization must keep the port intact while lowercasing the host."""
     parsed = parse_iocs(["HTTPS://Evil.com:8443/Path"])
