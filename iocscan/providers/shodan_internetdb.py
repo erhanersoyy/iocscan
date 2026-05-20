@@ -9,6 +9,24 @@ from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, e
 
 ENDPOINT = "https://internetdb.shodan.io"
 
+_DETAILS_CAP = 5  # show first N items per category, then "+K more"
+
+
+def _build_details(*, ports, hostnames, tags, vulns) -> tuple[str, ...]:
+    lines: list[str] = []
+    for label, items in (
+        ("ports", ports),
+        ("hostnames", hostnames),
+        ("tags", tags),
+        ("vulns", vulns),
+    ):
+        if not items:
+            continue
+        head = ", ".join(str(x) for x in items[:_DETAILS_CAP])
+        suffix = f" +{len(items) - _DETAILS_CAP} more" if len(items) > _DETAILS_CAP else ""
+        lines.append(f"{label}: {head}{suffix}")
+    return tuple(lines)
+
 
 class ShodanInternetDB(Provider):
     name = "shodan_internetdb"
@@ -43,18 +61,21 @@ class ShodanInternetDB(Provider):
             return ProviderResult(self.name, Verdict.ERROR, "", None, "parse error", latency)
         ports = data.get("ports") or []
         vulns = data.get("vulns") or []
+        hostnames = data.get("hostnames") or []
+        tags = data.get("tags") or []
+        details = _build_details(ports=ports, hostnames=hostnames, tags=tags, vulns=vulns)
         if vulns:
             return ProviderResult(
                 self.name, Verdict.SUSPICIOUS,
                 f"{len(ports)} ports, {len(vulns)} vulns",
-                data, None, latency,
+                data, None, latency, details=details,
             )
         if ports:
             return ProviderResult(
                 self.name, Verdict.CLEAN, f"{len(ports)} ports",
-                data, None, latency,
+                data, None, latency, details=details,
             )
-        return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency)
+        return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency, details=details)
 
     def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
         # The InternetDB JSON itself is user-readable; no separate UI page.
