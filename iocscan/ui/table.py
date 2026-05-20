@@ -125,6 +125,10 @@ def _format_provider_cell(result, *, ascii_only: bool, permalink: str | None = N
     render OSC 8 hyperlinks add their own underline that cannot be suppressed
     from the application side, so callers pass ``permalink=None`` to keep
     cells visually clean.
+
+    If ``result.details`` is non-empty, each detail line is rendered below the
+    score in a muted style — used today by Shodan to surface ports/hostnames/
+    tags/vulns without polluting the short ``score`` summary.
     """
     if result.verdict == Verdict.ERROR:
         glyph = (classify_error_ascii if ascii_only else classify_error)(result.error)
@@ -134,6 +138,9 @@ def _format_provider_cell(result, *, ascii_only: bool, permalink: str | None = N
         body = f"[{VERDICT_STYLES[result.verdict]}]{cell_no}[/]"
     else:
         body = f"[{VERDICT_STYLES[result.verdict]}]{_escape(result.score)}[/]"
+    if result.details:
+        detail_lines = "\n".join(f"[muted]{_escape(line)}[/]" for line in result.details)
+        body = f"{body}\n{detail_lines}"
     if permalink:
         return f"[link={permalink}]{body}[/link]"
     return body
