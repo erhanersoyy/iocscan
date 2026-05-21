@@ -21,9 +21,9 @@ async def test_vt_quota_parsed_from_overall_quotas(monkeypatch, tmp_path):
     def h(req: httpx.Request):
         assert "deadbeef" in str(req.url)
         return httpx.Response(200, json={
-            "data": {"attributes": {"api_requests_daily": {
+            "data": {"api_requests_daily": {
                 "user": {"used": 142, "allowed": 500}
-            }}}
+            }}
         })
 
     async with _client(h) as client:

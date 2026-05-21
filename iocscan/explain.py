@@ -53,6 +53,11 @@ def _provider_panel(
     else:
         lines.append(f"weight:    {WEIGHTS.get(provider.name, 1)}")
 
+    if result.details:
+        lines.append("details:")
+        for d in result.details:
+            lines.append(f"  {_escape(d)}")
+
     if result.raw is not None:
         raw_str = json.dumps(result.raw, indent=2, default=str)
         if len(raw_str) > _RAW_LIMIT:

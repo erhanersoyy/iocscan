@@ -33,7 +33,7 @@ def test_providers_subcommand_emits_ascii_table(tmp_path):
 
     # New columns present.
     assert "Quota" in r.stdout
-    assert "Last 429" in r.stdout
+    assert "Rate" in r.stdout and "Limit Hit" in r.stdout
 
 
 @pytest.mark.network

@@ -80,7 +80,9 @@ WHOIS_SERVERS = {
     "nl":     "whois.domain-registry.nl",
     "ca":     "whois.cira.ca",
     "au":     "whois.auda.org.au",
-    "tr":     "whois.nic.tr",
+    # .tr registry moved from METU NIC to TRABIS (BTK) in Sep 2022; the old
+    # whois.nic.tr host no longer resolves.
+    "tr":     "whois.trabis.gov.tr",
     "xyz":    "whois.nic.xyz",
     "online": "whois.nic.online",
     "site":   "whois.nic.site",
@@ -150,7 +152,10 @@ _WHOIS_LINE_RE = re.compile(r"^[ \t]*([\w\- ]+?)[ \t]*:[ \t]*(.*?)[ \t]*$")
 # Domain WHOIS display fields — ICANN-mandated keys covering most gTLDs
 # and major ccTLDs. Order here is the row order in the table detail block.
 _WHOIS_DOMAIN_DISPLAY: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("registrar",    ("registrar",)),
+    # TRABIS exposes registrant/registrar via "** Section:" blocks (not flat
+    # key:value); _parse_trabis_sections injects them into the display dict.
+    ("registrant",   ("registrant",)),
+    ("registrar",    ("registrar", "organization name")),
     ("created",      (
         "creation date", "created on", "created", "registered on",
         "registration time", "created date", "domain registered",
@@ -158,7 +163,7 @@ _WHOIS_DOMAIN_DISPLAY: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("updated",      ("updated date", "last updated on", "updated", "last modified")),
     ("expires",      (
         "registry expiry date", "registrar registration expiration date",
-        "expiry date", "expiration date", "expires", "renewal date",
+        "expiry date", "expiration date", "expires", "expires on", "renewal date",
     )),
     ("status",       ("domain status", "status")),
     ("name servers", ("name server", "nameserver", "nserver")),
@@ -189,7 +194,19 @@ class WhoisAge(Provider):
         if text is None:
             return _err(self.name, f"network: {exc_name}", start)
         latency = int((time.perf_counter() - start) * 1000)
+        # TRABIS (and possibly other registries) pad keys with dots:
+        # "Created on..............: 2024-Aug-27." — strip the dots so the
+        # generic "key: value" regex can match.
+        text = re.sub(r"\.+:", ":", text)
         display = _parse_domain_whois_for_display(text)
+        # TRABIS exposes registrant / domain servers as "** Section:" multiline
+        # blocks rather than flat key:value lines — fold the first non-redacted
+        # registrant line and the full server list into the display dict.
+        sections = _parse_trabis_sections(text)
+        if "registrant" in sections and sections["registrant"]:
+            display.setdefault("registrant", sections["registrant"][0])
+        if "domain servers" in sections and sections["domain servers"]:
+            display.setdefault("name servers", "; ".join(sections["domain servers"]))
         created = _extract_creation_date(text)
         # Build the detail block first; it survives even if the response
         # carries no creation date — the user still wants to see registrar
@@ -412,15 +429,48 @@ def _extract_creation_date(text: str) -> datetime | None:
     return None
 
 
+def _parse_trabis_sections(text: str) -> dict[str, list[str]]:
+    """Parse TRABIS-style ``** Section Name:`` multiline blocks.
+
+    The .tr registry response groups registrant / registrar / nameserver data
+    under section headers rather than flat ``key: value`` lines. "Hidden upon
+    user request" placeholders are dropped so the registrant field carries
+    real data when present.
+    """
+    sections: dict[str, list[str]] = {}
+    current: str | None = None
+    header_re = re.compile(r"^\*+\s*([A-Za-z][\w\s]*?)\s*:\s*$")
+    for raw in text.splitlines():
+        line = raw.strip()
+        m = header_re.match(line)
+        if m:
+            current = m.group(1).strip().lower()
+            sections.setdefault(current, [])
+            continue
+        if current is None or not line:
+            continue
+        if line.lower() == "hidden upon user request":
+            continue
+        # Inside a section we only want standalone body lines; skip "key: val"
+        # rows so e.g. "Organization Name : TEKNOTEL" doesn't shadow the
+        # registrant's first-line organization in another section.
+        if ":" in line:
+            continue
+        sections[current].append(line)
+    return sections
+
+
 def _parse_date(s: str) -> datetime | None:
     """Best-effort WHOIS date parser. Stays stdlib-only on purpose."""
-    s = s.strip()
+    # TRABIS trails its date values with a period ("2024-Aug-27.").
+    s = s.strip().rstrip(".")
     for fmt in (
         "%Y-%m-%dT%H:%M:%S.%fZ",
         "%Y-%m-%dT%H:%M:%SZ",
         "%Y-%m-%dT%H:%M:%S",
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d",
+        "%Y-%b-%d",
         "%d-%b-%Y",
         "%d.%m.%Y",
     ):
