@@ -25,7 +25,8 @@ async def test_hit_with_vulns_returns_suspicious():
     async with _c(h) as c:
         r = await ShodanInternetDB().lookup("1.2.3.4", IOCType.IP, c, Config())
     assert r.verdict == Verdict.SUSPICIOUS
-    assert r.score == "3 ports, 1 vulns"
+    # Score line was removed in favor of per-category detail rows.
+    assert r.score == "—"
 
 
 async def test_hit_without_vulns_returns_clean():
@@ -37,7 +38,7 @@ async def test_hit_without_vulns_returns_clean():
     async with _c(h) as c:
         r = await ShodanInternetDB().lookup("1.2.3.4", IOCType.IP, c, Config())
     assert r.verdict == Verdict.CLEAN
-    assert r.score == "1 ports"
+    assert r.score == "—"
 
 
 async def test_empty_response_returns_clean_dash():
@@ -76,3 +77,52 @@ async def test_enrichment_only_flag_set():
 async def test_supports_only_ip():
     p = ShodanInternetDB()
     assert p.supports == {IOCType.IP}
+
+
+async def test_details_populates_ports_hostnames_tags_vulns():
+    def h(req):
+        return httpx.Response(200, json={
+            "ip": "1.2.3.4",
+            "ports": [22, 80, 443],
+            "vulns": ["CVE-2021-44228"],
+            "hostnames": ["a.example.com", "b.example.com"],
+            "tags": ["cdn", "cloud"],
+            "cpes": [],
+        })
+    async with _c(h) as c:
+        r = await ShodanInternetDB().lookup("1.2.3.4", IOCType.IP, c, Config())
+    assert r.details == (
+        "ports: 22, 80, 443",
+        "hostnames: a.example.com, b.example.com",
+        "tags: cdn, cloud",
+        "vulns: CVE-2021-44228",
+    )
+
+
+async def test_details_truncates_long_lists_with_plus_n_more():
+    def h(req):
+        return httpx.Response(200, json={
+            "ip": "1.2.3.4",
+            "ports": list(range(1, 21)),
+            "vulns": [], "hostnames": [], "tags": [], "cpes": [],
+        })
+    async with _c(h) as c:
+        r = await ShodanInternetDB().lookup("1.2.3.4", IOCType.IP, c, Config())
+    assert r.details == ("ports: 1, 2, 3, 4, 5 +15 more",)
+
+
+async def test_details_empty_when_no_lists():
+    def h(req):
+        return httpx.Response(200, json={
+            "ip": "1.2.3.4", "ports": [], "vulns": [],
+            "hostnames": [], "tags": [], "cpes": [],
+        })
+    async with _c(h) as c:
+        r = await ShodanInternetDB().lookup("1.2.3.4", IOCType.IP, c, Config())
+    assert r.details == ()
+
+
+async def test_details_absent_on_404():
+    async with _c(lambda req: httpx.Response(404)) as c:
+        r = await ShodanInternetDB().lookup("10.0.0.1", IOCType.IP, c, Config())
+    assert r.details == ()

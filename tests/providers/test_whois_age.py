@@ -59,14 +59,16 @@ def _whois_body(creation_line: str) -> bytes:
     return body.encode("ascii")
 
 
-async def test_old_domain_returns_clean_with_year_score(monkeypatch):
+async def test_old_domain_returns_clean(monkeypatch):
     captured: dict = {}
     body = _whois_body("Creation Date: 2010-01-01T00:00:00Z")
     monkeypatch.setattr(asyncio, "open_connection", _stub_open(body, captured))
     r = await WhoisAge().lookup("example.com", IOCType.DOMAIN, httpx.AsyncClient(), Config())
     assert r.verdict == Verdict.CLEAN
-    # Year-formatted score (>= 365d): `Ny old`
-    assert r.score.endswith("y old")
+    # Score line was removed in favor of per-field detail rows; the age is
+    # captured in raw["age_days"] for programmatic consumers.
+    assert r.score == "—"
+    assert (r.raw or {}).get("age_days", 0) >= 365
     # Routed to the .com authoritative server
     assert captured["host"] == "whois.verisign-grs.com"
     assert captured["port"] == 43
@@ -80,9 +82,9 @@ async def test_newly_registered_returns_suspicious(monkeypatch):
     monkeypatch.setattr(asyncio, "open_connection", _stub_open(_whois_body(line)))
     r = await WhoisAge().lookup("brand-new.com", IOCType.DOMAIN, httpx.AsyncClient(), Config())
     assert r.verdict == Verdict.SUSPICIOUS
-    assert r.score.endswith("d old")
+    assert r.score == "—"
     # Allow ±1 day drift across the day boundary.
-    age = int(r.score.split("d", 1)[0])
+    age = (r.raw or {}).get("age_days", 0)
     assert 6 <= age <= 8
 
 
@@ -133,7 +135,85 @@ async def test_lowercase_created_pattern_matches(monkeypatch):
     monkeypatch.setattr(asyncio, "open_connection", _stub_open(_whois_body(line)))
     r = await WhoisAge().lookup("example.com", IOCType.DOMAIN, httpx.AsyncClient(), Config())
     assert r.verdict == Verdict.CLEAN
-    assert r.score.endswith("y old")
+    assert r.score == "—"
+    assert (r.raw or {}).get("age_days", 0) >= 365
+
+
+_DOMAIN_BODY = (
+    "   Domain Name: ONLAYER.COM\r\n"
+    "   Registrar: NameCheap, Inc.\r\n"
+    "   Registrar URL: https://www.namecheap.com\r\n"
+    "   Updated Date: 2024-03-12T09:13:55Z\r\n"
+    "   Creation Date: 2013-04-23T14:24:12Z\r\n"
+    "   Registry Expiry Date: 2026-04-23T14:24:12Z\r\n"
+    "   Domain Status: clientTransferProhibited https://icann.org/epp#clientTransferProhibited\r\n"
+    "   Domain Status: clientUpdateProhibited https://icann.org/epp#clientUpdateProhibited\r\n"
+    "   Name Server: DNS1.NAMECHEAPHOSTING.COM\r\n"
+    "   Name Server: DNS2.NAMECHEAPHOSTING.COM\r\n"
+    "   DNSSEC: unsigned\r\n"
+).encode("ascii")
+
+
+async def test_domain_lookup_emits_icann_display_fields(monkeypatch):
+    """Domain WHOIS: ICANN-standard fields surface as detail rows; EPP URL
+    suffix is stripped from status values; repeated name-server / status
+    lines are joined with `; `."""
+    monkeypatch.setattr(asyncio, "open_connection", _stub_open(_DOMAIN_BODY))
+    r = await WhoisAge().lookup("onlayer.com", IOCType.DOMAIN, httpx.AsyncClient(), Config())
+    assert r.verdict == Verdict.CLEAN
+    assert r.score == "—"
+    assert r.details == (
+        "server: whois.verisign-grs.com",
+        "registrar: NameCheap, Inc.",
+        "created: 2013-04-23T14:24:12Z",
+        "updated: 2024-03-12T09:13:55Z",
+        "expires: 2026-04-23T14:24:12Z",
+        "status: clientTransferProhibited; clientUpdateProhibited",
+        "name servers: DNS1.NAMECHEAPHOSTING.COM; DNS2.NAMECHEAPHOSTING.COM",
+        "dnssec: unsigned",
+    )
+
+
+async def test_domain_status_without_epp_url_kept_intact(monkeypatch):
+    """A status token without a trailing EPP URL must not lose content
+    when run through the whitespace-split (`.split(None, 1)`)."""
+    body = _whois_body(
+        "Creation Date: 2010-01-01T00:00:00Z\r\n"
+        "Domain Status: ok"
+    )
+    monkeypatch.setattr(asyncio, "open_connection", _stub_open(body))
+    r = await WhoisAge().lookup("example.com", IOCType.DOMAIN, httpx.AsyncClient(), Config())
+    assert "status: ok" in r.details
+
+
+async def test_domain_status_strips_tab_separated_epp_url(monkeypatch):
+    """A hostile WHOIS server might use TAB rather than space to separate
+    the status token from the EPP URL — the strip must still kick in.
+    Verifies the .split(None, 1) widening from .split(' ', 1)."""
+    body = _whois_body(
+        "Creation Date: 2010-01-01T00:00:00Z\r\n"
+        "Domain Status: clientHold\thttps://evil.example/x"
+    )
+    monkeypatch.setattr(asyncio, "open_connection", _stub_open(body))
+    r = await WhoisAge().lookup("example.com", IOCType.DOMAIN, httpx.AsyncClient(), Config())
+    assert "status: clientHold" in r.details
+    assert "evil.example" not in "\n".join(r.details)
+
+
+async def test_domain_multi_alias_collision_first_wins(monkeypatch):
+    """When two aliases for the same display label appear (e.g.
+    `Updated Date:` and `Last Modified:` both map to `updated`), the
+    canonical alias order in _WHOIS_DOMAIN_DISPLAY decides which one
+    wins — `Updated Date` comes first in the alias tuple, so it wins."""
+    body = _whois_body(
+        "Creation Date: 2010-01-01T00:00:00Z\r\n"
+        "Updated Date: 2024-01-01T00:00:00Z\r\n"
+        "Last Modified: 2099-12-31T00:00:00Z"
+    )
+    monkeypatch.setattr(asyncio, "open_connection", _stub_open(body))
+    r = await WhoisAge().lookup("example.com", IOCType.DOMAIN, httpx.AsyncClient(), Config())
+    assert "updated: 2024-01-01T00:00:00Z" in r.details
+    assert "2099" not in "\n".join(r.details)
 
 
 async def test_enrichment_only_flag_set():
@@ -262,3 +342,106 @@ async def test_ip_lookup_iana_network_error_returns_error(monkeypatch):
     r = await WhoisAge().lookup("8.8.8.8", IOCType.IP, httpx.AsyncClient(), Config())
     assert r.verdict == Verdict.ERROR
     assert "OSError" in (r.error or "")
+
+
+_RIPE_BODY = (
+    "% This is the RIPE Database query service.\n"
+    "% The objects are in RPSL format.\n"
+    "%\n"
+    "\n"
+    "inetnum:        185.220.101.0 - 185.220.101.31\n"
+    "netname:        ARTIKEL10\n"
+    "country:        DE\n"
+    "org:            ORG-AE101-RIPE\n"
+    "admin-c:        MM61154-RIPE\n"
+    "tech-c:         MM61154-RIPE\n"
+    "status:         ASSIGNED PA\n"
+    "mnt-by:         ZWIEBELFREUNDE\n"
+    "mnt-by:         ARTIKEL10-MNT\n"
+    "created:        2021-08-19T08:09:49Z\n"
+    "last-modified:  2025-06-18T13:35:44Z\n"
+    "source:         RIPE\n"
+    "\n"
+    "organisation:   ORG-AE101-RIPE\n"
+    "org-name:       Artikel 10 e.V.\n"
+    "country:        US\n"  # Different country in 2nd object — must be ignored.
+    "source:         RIPE\n"
+).encode("ascii")
+
+
+async def test_ip_lookup_ripe_emits_requested_display_fields(monkeypatch):
+    iana = b"refer:        whois.ripe.net\n"
+    history: list[str] = []
+    monkeypatch.setattr(
+        asyncio, "open_connection",
+        _stub_open_per_host({"whois.iana.org": iana, "whois.ripe.net": _RIPE_BODY}, history),
+    )
+    r = await WhoisAge().lookup("185.220.101.1", IOCType.IP, httpx.AsyncClient(), Config())
+    assert history == ["whois.iana.org", "whois.ripe.net"]
+    assert r.verdict == Verdict.CLEAN
+    # Compact score = netname.
+    assert r.score == "ARTIKEL10"
+    # Details: `server:` first, then RIPE labels in the canonical order.
+    # `country: US` from the later organisation block must NOT leak in.
+    # `mnt-by` collapses repeated lines into a `; `-joined string.
+    assert r.details == (
+        "server: whois.ripe.net",
+        "inetnum: 185.220.101.0 - 185.220.101.31",
+        "netname: ARTIKEL10",
+        "country: DE",
+        "org: ORG-AE101-RIPE",
+        "admin-c: MM61154-RIPE",
+        "tech-c: MM61154-RIPE",
+        "status: ASSIGNED PA",
+        "mnt-by: ZWIEBELFREUNDE; ARTIKEL10-MNT",
+        "created: 2021-08-19T08:09:49Z",
+        "last-modified: 2025-06-18T13:35:44Z",
+        "source: RIPE",
+    )
+
+
+async def test_ip_lookup_arin_maps_camelcase_into_ripe_labels(monkeypatch):
+    """ARIN responses use CamelCase keys; they must still surface in the
+    RIPE-style detail block via the alias map (NetRange→inetnum etc.)."""
+    iana = b"refer:        whois.arin.net\n"
+    monkeypatch.setattr(
+        asyncio, "open_connection",
+        _stub_open_per_host({"whois.iana.org": iana, "whois.arin.net": _ARIN_BODY}),
+    )
+    r = await WhoisAge().lookup("52.166.126.216", IOCType.IP, httpx.AsyncClient(), Config())
+    # Score from NetName.
+    assert r.score == "MSFT"
+    # Only the fields present in the ARIN body should appear; country /
+    # admin-c / tech-c / mnt-by / source are absent in ARIN's vocabulary.
+    assert r.details == (
+        "server: whois.arin.net",
+        "inetnum: 52.145.0.0 - 52.191.255.255",
+        "netname: MSFT",
+        "org: Microsoft Corporation (MSFT)",
+        "status: Direct Allocation",
+        "created: 2015-11-24",
+        "last-modified: 2021-12-14",
+    )
+    # JSON-output backward compatibility: legacy CamelCase keys remain
+    # in `raw` for downstream tools that grep for `raw["NetName"]` etc.
+    raw = r.raw or {}
+    assert raw["NetName"] == "MSFT"
+    assert raw["Organization"] == "Microsoft Corporation (MSFT)"
+
+
+async def test_ip_lookup_ripe_raw_includes_ripe_style_keys(monkeypatch):
+    """JSON-output BC for RIPE: `raw` must surface the parsed fields
+    even though `_parse_ip_fields` (ARIN-only) returns nothing for an
+    RPSL response. Without the display-merge, downstream JSON consumers
+    would see only `raw = {"server": "..."}` for every RIPE IP."""
+    iana = b"refer:        whois.ripe.net\n"
+    monkeypatch.setattr(
+        asyncio, "open_connection",
+        _stub_open_per_host({"whois.iana.org": iana, "whois.ripe.net": _RIPE_BODY}),
+    )
+    r = await WhoisAge().lookup("185.220.101.1", IOCType.IP, httpx.AsyncClient(), Config())
+    raw = r.raw or {}
+    assert raw["server"] == "whois.ripe.net"
+    assert raw["netname"] == "ARTIKEL10"
+    assert raw["country"] == "DE"
+    assert raw["mnt-by"] == "ZWIEBELFREUNDE; ARTIKEL10-MNT"

@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import logging
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -16,6 +17,9 @@ from iocscan.core.scan import ScanResult, _apply_whitelist, scan_ioc, sort_scans
 from iocscan.core.verdict import aggregate, coverage
 from iocscan.providers import ALL_PROVIDERS
 from iocscan.providers.base import ProviderResult, Verdict
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
 from iocscan.ui.console import make_console
 from iocscan.ui.export import EXPORT_FORMATS, render_export
 from iocscan.ui.footer import render_summary
@@ -280,6 +284,21 @@ def main(argv: list[str] | None = None) -> int:
     return asyncio.run(_run_scan(parsed, config, args))
 
 
+def _progress_enabled(args) -> bool:
+    """Stderr progress is on only when the user is watching a table.
+
+    Disabled under --json (machine output), --quiet (TSV), legacy --json flag,
+    and --debug (avoids interleaving with log lines).
+    """
+    if getattr(args, "json", False):
+        return False
+    if getattr(args, "quiet", False):
+        return False
+    if getattr(args, "debug", False):
+        return False
+    return getattr(args, "format", "table") == "table"
+
+
 async def _run_scan(parsed, config, args) -> int:
     import time
     cache_path = Path(os.path.expanduser("~")) / ".iocscan" / "cache.db"
@@ -297,7 +316,31 @@ async def _run_scan(parsed, config, args) -> int:
                 else:
                     cache_fresh += 1
                 providers_to_query = [p for p in ALL_PROVIDERS if p.name not in cached]
-                scan = await scan_ioc(ioc, ioc_type, providers_to_query, client, config)
+                applicable = [p for p in providers_to_query if ioc_type in p.supports]
+                total_providers = len(applicable)
+
+                if _progress_enabled(args) and total_providers:
+                    # Transient progress: spinner clears once the IOC is done so
+                    # the final table renders without leftover ANSI artifacts.
+                    progress = Progress(
+                        SpinnerColumn(),
+                        TextColumn("Fetching data: {task.fields[ioc]} ({task.completed}/{task.total} providers)"),
+                        transient=True,
+                        # Stderr so stdout stays clean for piping table output.
+                        console=Console(stderr=True),
+                    )
+                    task_id = progress.add_task("scan", total=total_providers, ioc=ioc)
+                    progress.start()
+                    try:
+                        scan = await scan_ioc(
+                            ioc, ioc_type, providers_to_query, client, config,
+                            on_result=lambda _r, p=progress, t=task_id: p.advance(t),
+                        )
+                    finally:
+                        progress.stop()
+                else:
+                    scan = await scan_ioc(ioc, ioc_type, providers_to_query, client, config)
+
                 if cached:
                     merged_results = list(cached.values()) + scan.provider_results
                     enrichment_only = {p.name for p in ALL_PROVIDERS if p.enrichment_only}
@@ -523,10 +566,66 @@ def _cmd_health(args, config) -> int:
 
 
 def _cmd_providers(config) -> int:
+    """Sync entry point — kicks off the async probe + render."""
+    return asyncio.run(_cmd_providers_async(config))
+
+
+async def _cmd_providers_async(config) -> int:
+    from iocscan.core.observability import ProviderHealth, health_report
+    from iocscan.core.quota import QuotaResult, probe_quotas
+    from iocscan.ui.providers_table import render_providers_table
+
+    # Health (last 429s) is best-effort from the same SQLite cache file.
+    health: dict[str, ProviderHealth] = {}
+    try:
+        cache_path = Path(os.path.expanduser("~")) / ".iocscan" / "cache.db"
+        if cache_path.exists():
+            c = Cache(cache_path, ttl_seconds=config.cache_ttl_hours * 3600)
+            try:
+                for h in health_report(c._conn):  # noqa: SLF001 — Cache exposes the conn for this purpose
+                    health[h.provider] = h
+            finally:
+                c.close()
+    except (sqlite3.Error, ValueError, OSError):
+        # Observability is non-critical; an empty `health` just means "—" in the Last 429 column.
+        health = {}
+
+    # Only providers with a probeable quota endpoint trigger live probes.
+    probeable = [p for p in ALL_PROVIDERS if p.name in ("virustotal", "abuseipdb") and p.has_key(config)]
+
+    stderr_console = Console(stderr=True)
+    quotas: dict[str, QuotaResult] = {}
+    async with _make_client(config.timeout_seconds) as client:
+        if probeable:
+            progress = Progress(
+                SpinnerColumn(),
+                TextColumn("Fetching provider quotas… ({task.completed}/{task.total})"),
+                transient=True,
+                console=stderr_console,
+            )
+            task_id = progress.add_task("probe", total=len(probeable))
+            progress.start()
+            try:
+                quotas = await probe_quotas(probeable, config, client, timeout_seconds=20.0)
+                # Bump bar to full after all probes finish.
+                progress.update(task_id, completed=len(probeable))
+            finally:
+                progress.stop()
+
+    # Fill quota cells for providers we didn't probe.
     for p in ALL_PROVIDERS:
-        status = "active" if p.has_key(config) else "missing key"
-        kinds = ",".join(sorted(t.value for t in p.supports))
-        print(f"{p.name:12} [{kinds:>10}] {status}")
+        if p.name in quotas:
+            continue
+        if not p.has_key(config):
+            quotas[p.name] = QuotaResult(p.name, None, None, "No Key")
+        elif p.name in ("virustotal", "abuseipdb"):
+            # Had a key but wasn't included (defensive — shouldn't happen).
+            quotas[p.name] = QuotaResult(p.name, None, None, "error: not probed")
+        else:
+            quotas[p.name] = QuotaResult(p.name, None, None, "no quota API")
+
+    stdout_console = Console()
+    render_providers_table(ALL_PROVIDERS, config, quotas, health, stdout_console)
     return 0
 
 

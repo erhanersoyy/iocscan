@@ -1,17 +1,21 @@
 """WHOIS enrichment via raw TCP-43.
 
-For DOMAINs: query the TLD authoritative registry and extract the creation
-date. Verdict is SUSPICIOUS for newly-registered domains (<30 days),
-CLEAN otherwise. A hardcoded TLD -> server map covers the ~25 highest-
-volume TLDs so the common case stays one hop.
+For DOMAINs: query the TLD authoritative registry, parse ICANN-standard
+fields (registrar, created, updated, expires, status, name servers,
+dnssec), and surface them as table detail rows. Verdict is SUSPICIOUS
+for newly-registered domains (<30 days), CLEAN otherwise — age is
+captured in `raw["age_days"]` for programmatic consumers. A hardcoded
+TLD -> server map covers the ~25 highest-volume TLDs so the common
+case stays one hop.
 
 For IPs: query IANA (`whois.iana.org`) to discover the responsible RIR,
-then query the RIR for the network registration record. Parses ARIN-
-style fields (NetRange, CIDR, NetName, NetHandle, Parent, NetType,
-OriginAS, Organization, RegDate, Updated, Ref) and surfaces NetName /
-Organization as the table score. Other RIRs (RIPE/APNIC/LACNIC/AFRINIC)
-use different field names; those responses will produce fewer matching
-fields and a row score of '—'. Verdict is always CLEAN (enrichment).
+then query the RIR for the network registration record. The display
+parser folds both ARIN CamelCase keys (NetRange, NetName, …) and RPSL
+lowercase keys used by RIPE/APNIC/AFRINIC (inetnum, netname, …) onto a
+single set of RIPE-style display labels (inetnum, netname, country,
+org, admin-c, tech-c, status, mnt-by, created, last-modified, source).
+NetName / netname becomes the table score; all parsed fields surface
+as detail rows. Verdict is always CLEAN (enrichment).
 
 The aggregator ignores this row because `enrichment_only = True`.
 """
@@ -117,6 +121,50 @@ _IP_FIELD_RE = re.compile(
 # downstream delegations.
 _REFER_RE = re.compile(r"^\s*refer:\s*(\S+)\s*$", re.MULTILINE | re.IGNORECASE)
 
+# Display labels (RIPE-style) + the case-insensitive WHOIS keys we accept
+# for each. Order here defines the row order in the table detail block.
+# ARIN uses CamelCase keys (NetRange, NetName, …); RIPE/APNIC/AFRINIC use
+# lowercase RPSL keys (inetnum, netname, …) — the alias list folds both
+# vocabularies onto a single set of display labels.
+_WHOIS_DISPLAY: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("inetnum",       ("inetnum", "netrange")),
+    ("netname",       ("netname",)),
+    ("country",       ("country",)),
+    ("org",           ("org", "organization", "orgid", "orgname")),
+    ("admin-c",       ("admin-c", "adminhandle")),
+    ("tech-c",        ("tech-c", "techhandle")),
+    ("status",        ("status", "nettype")),
+    ("mnt-by",        ("mnt-by",)),
+    ("created",       ("created", "regdate")),
+    ("last-modified", ("last-modified", "updated")),
+    ("source",        ("source",)),
+)
+# Generic `<key>: <value>` line matcher used by the display parsers. Allows
+# spaces inside the key so domain WHOIS labels like "Creation Date" or
+# "Registry Expiry Date" match alongside RPSL single-token keys (inetnum,
+# mnt-by). The lazy `+?` plus the explicit `[ \t]*:` boundary stop the
+# capture at the *first* colon, which keeps URL-bearing values like
+# "Registrar URL: https://..." intact.
+_WHOIS_LINE_RE = re.compile(r"^[ \t]*([\w\- ]+?)[ \t]*:[ \t]*(.*?)[ \t]*$")
+
+# Domain WHOIS display fields — ICANN-mandated keys covering most gTLDs
+# and major ccTLDs. Order here is the row order in the table detail block.
+_WHOIS_DOMAIN_DISPLAY: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("registrar",    ("registrar",)),
+    ("created",      (
+        "creation date", "created on", "created", "registered on",
+        "registration time", "created date", "domain registered",
+    )),
+    ("updated",      ("updated date", "last updated on", "updated", "last modified")),
+    ("expires",      (
+        "registry expiry date", "registrar registration expiration date",
+        "expiry date", "expiration date", "expires", "renewal date",
+    )),
+    ("status",       ("domain status", "status")),
+    ("name servers", ("name server", "nameserver", "nserver")),
+    ("dnssec",       ("dnssec",)),
+)
+
 
 class WhoisAge(Provider):
     name = "whois_age"
@@ -141,17 +189,29 @@ class WhoisAge(Provider):
         if text is None:
             return _err(self.name, f"network: {exc_name}", start)
         latency = int((time.perf_counter() - start) * 1000)
+        display = _parse_domain_whois_for_display(text)
         created = _extract_creation_date(text)
+        # Build the detail block first; it survives even if the response
+        # carries no creation date — the user still wants to see registrar
+        # / expiry / nameservers etc.
+        detail_lines = [f"server: {server}"]
+        for label, _ in _WHOIS_DOMAIN_DISPLAY:
+            value = display.get(label)
+            if value:
+                detail_lines.append(f"{label}: {value}")
+        details = tuple(detail_lines) if display else ()
         if created is None:
-            return ProviderResult(self.name, Verdict.UNKNOWN, "—", None, "no creation date in response", latency)
+            return ProviderResult(
+                self.name, Verdict.UNKNOWN, "—", None,
+                "no creation date in response", latency, details=details,
+            )
         now = datetime.now(timezone.utc)
         if created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)
         age_days = max(0, (now - created).days)
-        score = f"{age_days}d old" if age_days < 365 else f"{age_days // 365}y old"
         verdict = Verdict.SUSPICIOUS if age_days < _NRD_DAYS else Verdict.CLEAN
         raw: dict[str, Any] = {"creation_date": created.isoformat(), "age_days": age_days, "server": server}
-        return ProviderResult(self.name, verdict, score, raw, None, latency)
+        return ProviderResult(self.name, verdict, "—", raw, None, latency, details=details)
 
     async def _lookup_ip(self, ioc: str, start: float) -> ProviderResult:
         iana_text, exc_name = await _whois_query(_IANA_WHOIS, ioc)
@@ -172,13 +232,33 @@ class WhoisAge(Provider):
                 server = rir
         latency = int((time.perf_counter() - start) * 1000)
         fields = _parse_ip_fields(text)
-        if not fields:
+        display = _parse_whois_for_display(text)
+        if not fields and not display:
             return ProviderResult(self.name, Verdict.UNKNOWN, "—", None, "no netinfo in response", latency)
-        # NetName is a compact tag (e.g. "MSFT"); fall back to the longer
-        # Organization or NetRange when the RIR omits it.
-        score = fields.get("NetName") or fields.get("Organization") or fields.get("NetRange") or "—"
-        raw: dict[str, Any] = {"server": server, **fields}
-        return ProviderResult(self.name, Verdict.CLEAN, score, raw, None, latency)
+        # NetName is a compact tag (e.g. "MSFT"); fall back to org or
+        # inetnum range when the RIR omits it. `display` already folds
+        # ARIN CamelCase into RIPE-style labels via the alias map.
+        score = (
+            display.get("netname")
+            or display.get("org")
+            or display.get("inetnum")
+            or "—"
+        )
+        # Carry both the legacy ARIN CamelCase keys (so existing JSON
+        # consumers depending on raw["NetName"] / raw["Organization"]
+        # keep working) and the RIPE-style display keys (so RIPE/APNIC/
+        # AFRINIC responses, which produce no ARIN matches at all, still
+        # surface their fields in JSON output rather than just `server`).
+        raw: dict[str, Any] = {"server": server, **fields, **display}
+        detail_lines = [f"server: {server}"]
+        for label, _ in _WHOIS_DISPLAY:
+            value = display.get(label)
+            if value:
+                detail_lines.append(f"{label}: {value}")
+        return ProviderResult(
+            self.name, Verdict.CLEAN, score, raw, None, latency,
+            details=tuple(detail_lines),
+        )
 
 
 async def _whois_query(server: str, query: str) -> tuple[str | None, str]:
@@ -214,12 +294,111 @@ def _parse_ip_fields(text: str) -> dict[str, str]:
     so top-level allocation values aren't overwritten by nested POC blocks.
     Empty values (e.g. `OriginAS:` with nothing after the colon) are kept
     because they convey "field present but unset" — the table cell renders
-    blanks the same as missing fields."""
+    blanks the same as missing fields.
+
+    Retained for `raw` JSON backward compatibility: callers depending on
+    raw["NetName"] / raw["Organization"] etc. keep working. The table
+    renderer itself reads only from `_parse_whois_for_display`.
+    """
     out: dict[str, str] = {}
     for m in _IP_FIELD_RE.finditer(text):
         key, value = m.group(1), m.group(2).strip()
         if key not in out:
             out[key] = value
+    return out
+
+
+def _parse_domain_whois_for_display(text: str) -> dict[str, str]:
+    """Parse domain WHOIS text into ICANN-style display labels.
+
+    Unlike RPSL (RIPE/ARIN) records, domain WHOIS is a flat key:value list
+    with no object boundaries — so we scan the whole text, take the first
+    occurrence of each known key as canonical, and join repeats (multiple
+    name-server / domain-status lines) with `; `. ICANN-mandated status
+    values carry an EPP URL suffix that is stripped for readability.
+    """
+    known_aliases = {alias for _, aliases in _WHOIS_DOMAIN_DISPLAY for alias in aliases}
+    collected: dict[str, list[str]] = {}
+    for line in text.splitlines():
+        if line.startswith("%") or line.startswith("#") or line.startswith(">>>"):
+            continue
+        m = _WHOIS_LINE_RE.match(line)
+        if not m:
+            continue
+        key = m.group(1).strip().lower()
+        value = m.group(2).strip()
+        if not value or key not in known_aliases:
+            continue
+        collected.setdefault(key, []).append(value)
+
+    out: dict[str, str] = {}
+    for label, aliases in _WHOIS_DOMAIN_DISPLAY:
+        for alias in aliases:
+            if alias not in collected:
+                continue
+            values = collected[alias]
+            if label == "status":
+                # Strip the trailing EPP URL: "clientTransferProhibited
+                # https://icann.org/epp#…" -> "clientTransferProhibited".
+                # Split on any whitespace (some hostile servers separate
+                # the token from the URL with a tab); .split(None, 1)
+                # treats any run of whitespace as a single separator.
+                values = [v.split(None, 1)[0] for v in values]
+            seen: set[str] = set()
+            uniq: list[str] = []
+            for v in values:
+                if v not in seen:
+                    uniq.append(v)
+                    seen.add(v)
+            out[label] = "; ".join(uniq)
+            break
+    return out
+
+
+def _parse_whois_for_display(text: str) -> dict[str, str]:
+    """Parse the first WHOIS object's fields into RIPE-style display labels.
+
+    Object boundary detection has two rules:
+    1. Only enter "in object" mode when a *known* display-alias key is
+       seen. This skips IANA preamble lines (`refer:`, `% comments`) so
+       they don't claim the slot of the real inetnum block.
+    2. Once in object, the next blank line ends the object. Prevents a
+       later organisation/role block from shadowing inetnum fields
+       (e.g. its `country:` line would overwrite the real one otherwise).
+
+    Multi-value fields (e.g. RIPE `mnt-by` appearing twice within one
+    object) are joined with `; ` in the order they appeared.
+    """
+    known_aliases = {alias for _, aliases in _WHOIS_DISPLAY for alias in aliases}
+    collected: dict[str, list[str]] = {}
+    in_object = False
+    for line in text.splitlines():
+        # `>>>` brackets the "Last update of WHOIS database" footer in
+        # some Verisign/Donuts responses; skip it like a comment line.
+        if line.startswith("%") or line.startswith("#") or line.startswith(">>>"):
+            continue
+        if not line.strip():
+            if in_object:
+                break
+            continue
+        m = _WHOIS_LINE_RE.match(line)
+        if not m:
+            continue
+        key, value = m.group(1).strip().lower(), m.group(2).strip()
+        if not value:
+            continue
+        if not in_object:
+            if key not in known_aliases:
+                continue
+            in_object = True
+        collected.setdefault(key, []).append(value)
+
+    out: dict[str, str] = {}
+    for label, aliases in _WHOIS_DISPLAY:
+        for alias in aliases:
+            if alias in collected:
+                out[label] = "; ".join(collected[alias])
+                break
     return out
 
 
