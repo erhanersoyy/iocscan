@@ -589,8 +589,7 @@ async def _cmd_providers_async(config) -> int:
     # Only providers with a probeable quota endpoint trigger live probes.
     probeable = [p for p in ALL_PROVIDERS if p.name in ("virustotal", "abuseipdb") and p.has_key(config)]
 
-    # force_terminal=True so spinner text reaches stderr even when stdout is captured in tests/pipes.
-    stderr_console = Console(stderr=True, force_terminal=True)
+    stderr_console = Console(stderr=True)
     quotas: dict[str, QuotaResult] = {}
     async with _make_client(config.timeout_seconds) as client:
         if probeable:
