@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import logging
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -570,19 +571,22 @@ def _cmd_providers(config) -> int:
 
 
 async def _cmd_providers_async(config) -> int:
-    from iocscan.core.observability import health_report
+    from iocscan.core.observability import ProviderHealth, health_report
     from iocscan.core.quota import QuotaResult, probe_quotas
     from iocscan.ui.providers_table import render_providers_table
 
     # Health (last 429s) is best-effort from the same SQLite cache file.
-    health: dict[str, object] = {}
+    health: dict[str, ProviderHealth] = {}
     try:
         cache_path = Path(os.path.expanduser("~")) / ".iocscan" / "cache.db"
         if cache_path.exists():
             c = Cache(cache_path, ttl_seconds=config.cache_ttl_hours * 3600)
-            for h in health_report(c._conn):  # noqa: SLF001 — Cache exposes the conn for this purpose
-                health[h.provider] = h
-    except Exception:
+            try:
+                for h in health_report(c._conn):  # noqa: SLF001 — Cache exposes the conn for this purpose
+                    health[h.provider] = h
+            finally:
+                c.close()
+    except (sqlite3.Error, ValueError, OSError):
         # Observability is non-critical; an empty `health` just means "—" in the Last 429 column.
         health = {}
 
