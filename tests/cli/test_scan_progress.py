@@ -1,39 +1,78 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+from unittest.mock import MagicMock
 
 
-def test_scan_progress_appears_on_stderr(tmp_path):
-    """Smoke test: --format json must NOT print progress (stdout clean), while
-    default mode must print at least the "Fetching" string to stderr.
-    """
+def test_json_mode_has_no_progress_on_stderr(tmp_path):
+    """JSON mode must not print 'Fetching' anywhere (stdout or stderr)."""
     env = {
         "HOME": str(tmp_path),
         "PATH": "/usr/bin:/bin",
         "PYTHONUNBUFFERED": "1",
     }
-
-    # JSON mode: clean stdout, no progress noise.
-    # Use --no-cache so both runs hit providers independently.
     r = subprocess.run(
-        [sys.executable, "-m", "iocscan", "--format", "json", "--no-cache", "203.0.113.1"],
+        [sys.executable, "-m", "iocscan", "--no-cache", "--format", "json", "203.0.113.1"],
         capture_output=True, text=True, env=env, timeout=30,
     )
     assert "Fetching" not in r.stderr
     assert "Fetching" not in r.stdout
 
-    # Default (table) mode against the same unreachable IP: progress appears
-    # on stderr. We don't care about the exit code here.
-    # --no-cache prevents the first run's cache from suppressing the spinner.
-    r = subprocess.run(
-        [sys.executable, "-m", "iocscan", "--no-cache", "203.0.113.1"],
-        capture_output=True, text=True, env=env, timeout=30,
-    )
-    assert "Fetching" in r.stderr
 
+def test_table_mode_emits_progress_to_stderr_under_pty(tmp_path):
+    """With a real PTY on stderr, table-mode must emit the 'Fetching' marker."""
+    import pty
 
-from unittest.mock import MagicMock
+    env = {
+        "HOME": str(tmp_path),
+        "PATH": "/usr/bin:/bin",
+        "PYTHONUNBUFFERED": "1",
+        "TERM": "xterm-256color",
+    }
+
+    # Give the subprocess a pty as its stderr. Stdout stays a normal pipe so we
+    # can ignore the (potentially incomplete) table output.
+    err_master, err_slave = pty.openpty()
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "iocscan", "--no-cache", "203.0.113.1"],
+            stdout=subprocess.PIPE, stderr=err_slave, env=env,
+        )
+        os.close(err_slave)
+        captured = bytearray()
+        try:
+            # Drain the pty until the process exits or we time out.
+            import select
+            deadline = __import__("time").time() + 30
+            while True:
+                if proc.poll() is not None and not select.select([err_master], [], [], 0)[0]:
+                    break
+                if __import__("time").time() > deadline:
+                    proc.kill()
+                    break
+                rlist, _, _ = select.select([err_master], [], [], 0.5)
+                if rlist:
+                    try:
+                        chunk = os.read(err_master, 4096)
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    captured.extend(chunk)
+        finally:
+            os.close(err_master)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+    except Exception:
+        os.close(err_master)
+        raise
+
+    assert b"Fetching" in captured, f"stderr did not contain 'Fetching'; got: {captured!r}"
 
 
 def test_progress_disabled_when_json_or_quiet():

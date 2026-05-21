@@ -320,14 +320,12 @@ async def _run_scan(parsed, config, args) -> int:
                 if _progress_enabled(args) and total_providers:
                     # Transient progress: spinner clears once the IOC is done so
                     # the final table renders without leftover ANSI artifacts.
-                    # force_terminal=True ensures output even when stderr is a
-                    # pipe (e.g. in tests), so callers can assert on the text.
                     progress = Progress(
                         SpinnerColumn(),
                         TextColumn("Fetching data: {task.fields[ioc]} ({task.completed}/{task.total} providers)"),
                         transient=True,
                         # Stderr so stdout stays clean for piping table output.
-                        console=Console(stderr=True, force_terminal=True),
+                        console=Console(stderr=True),
                     )
                     task_id = progress.add_task("scan", total=total_providers, ioc=ioc)
                     progress.start()
