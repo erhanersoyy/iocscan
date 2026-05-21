@@ -7,6 +7,8 @@ import subprocess
 import sys
 import time
 
+import pytest
+
 
 def test_providers_subcommand_emits_ascii_table(tmp_path):
     """End-to-end: `iocscan providers` produces an ASCII-bordered table.
@@ -34,6 +36,7 @@ def test_providers_subcommand_emits_ascii_table(tmp_path):
     assert "Last 429" in r.stdout
 
 
+@pytest.mark.network
 def test_providers_subcommand_shows_fetching_spinner_when_keys_present_under_pty(tmp_path):
     """When a probeable key is configured, the 'Fetching' spinner text appears
     on stderr. Run under a real PTY so Rich's TTY detection fires."""

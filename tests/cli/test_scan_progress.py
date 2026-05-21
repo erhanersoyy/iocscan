@@ -8,7 +8,10 @@ import sys
 import time
 from unittest.mock import MagicMock
 
+import pytest
 
+
+@pytest.mark.network
 def test_json_mode_has_no_progress_on_stderr(tmp_path):
     """JSON mode must not print 'Fetching' anywhere (stdout or stderr)."""
     env = {
@@ -24,6 +27,7 @@ def test_json_mode_has_no_progress_on_stderr(tmp_path):
     assert "Fetching" not in r.stdout
 
 
+@pytest.mark.network
 def test_table_mode_emits_progress_to_stderr_under_pty(tmp_path):
     """With a real PTY on stderr, table-mode must emit the 'Fetching' marker."""
     env = {
