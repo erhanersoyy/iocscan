@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from typing import Callable
 
 import httpx
 
@@ -117,24 +118,42 @@ async def scan_ioc(
     providers: list[Provider],
     client: httpx.AsyncClient,
     config: Config,
+    *,
+    on_result: Callable[[ProviderResult], None] | None = None,
 ) -> ScanResult:
     applicable = [p for p in providers if ioc_type in p.supports]
     enrichment_only = {p.name for p in applicable if p.enrichment_only}
-    tasks = [_throttled_lookup(p, ioc, ioc_type, client, config) for p in applicable]
-    raw = await asyncio.gather(*tasks, return_exceptions=True)
-    results: list[ProviderResult] = []
-    for provider, item in zip(applicable, raw):
-        if isinstance(item, (KeyboardInterrupt, asyncio.CancelledError, SystemExit)):
-            # Propagate user-driven interrupts and event-loop cancellations
-            # instead of converting them into ERROR rows.
-            raise item
-        if isinstance(item, BaseException):
-            results.append(ProviderResult(
-                provider.name, Verdict.ERROR, "", None,
-                f"unhandled: {item.__class__.__name__}: {item}", 0,
-            ))
-        else:
-            results.append(item)
+
+    # Wrap each provider lookup so failures become ERROR rows tagged with the
+    # provider name — needed because as_completed loses the task→provider link.
+    async def _safe(p: Provider) -> ProviderResult:
+        try:
+            return await _throttled_lookup(p, ioc, ioc_type, client, config)
+        except (KeyboardInterrupt, asyncio.CancelledError, SystemExit):
+            raise
+        except BaseException as e:
+            return ProviderResult(
+                p.name, Verdict.ERROR, "", None,
+                f"unhandled: {e.__class__.__name__}: {e}", 0,
+            )
+
+    by_name: dict[str, ProviderResult] = {}
+    coros = [_safe(p) for p in applicable]
+    for fut in asyncio.as_completed(coros):
+        r = await fut
+        by_name[r.provider] = r
+        if on_result is not None:
+            try:
+                on_result(r)
+            except Exception:
+                # on_result is for cosmetic UI updates only; never let a bad
+                # callback break the scan. Logged at debug for observability.
+                log.debug("on_result callback raised", exc_info=True)
+
+    # Re-order to match the caller's `providers` list so downstream rendering
+    # stays deterministic regardless of completion order.
+    results = [by_name[p.name] for p in applicable]
+
     raw_verdict = aggregate(
         results, min_coverage=config.min_coverage, enrichment_only=enrichment_only,
     )
