@@ -58,7 +58,7 @@ AUTO_NARROW_THRESHOLD = 100
 # Fallback gray when the active console has no `table.border` theme entry
 # (e.g. bare Console() in tests). Picked to be visible-but-dim on both
 # dark and light terminals.
-_BORDER_FALLBACK = "grey37"
+_BORDER_FALLBACK = "grey70"
 
 
 def _border_style(console: Console) -> str:
