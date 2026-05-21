@@ -25,7 +25,8 @@ async def test_hit_with_vulns_returns_suspicious():
     async with _c(h) as c:
         r = await ShodanInternetDB().lookup("1.2.3.4", IOCType.IP, c, Config())
     assert r.verdict == Verdict.SUSPICIOUS
-    assert r.score == "3 ports, 1 vulns"
+    # Score line was removed in favor of per-category detail rows.
+    assert r.score == "—"
 
 
 async def test_hit_without_vulns_returns_clean():
@@ -37,7 +38,7 @@ async def test_hit_without_vulns_returns_clean():
     async with _c(h) as c:
         r = await ShodanInternetDB().lookup("1.2.3.4", IOCType.IP, c, Config())
     assert r.verdict == Verdict.CLEAN
-    assert r.score == "1 ports"
+    assert r.score == "—"
 
 
 async def test_empty_response_returns_clean_dash():

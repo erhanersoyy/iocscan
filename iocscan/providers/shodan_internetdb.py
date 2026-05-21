@@ -64,18 +64,11 @@ class ShodanInternetDB(Provider):
         hostnames = data.get("hostnames") or []
         tags = data.get("tags") or []
         details = _build_details(ports=ports, hostnames=hostnames, tags=tags, vulns=vulns)
-        if vulns:
-            return ProviderResult(
-                self.name, Verdict.SUSPICIOUS,
-                f"{len(ports)} ports, {len(vulns)} vulns",
-                data, None, latency, details=details,
-            )
-        if ports:
-            return ProviderResult(
-                self.name, Verdict.CLEAN, f"{len(ports)} ports",
-                data, None, latency, details=details,
-            )
-        return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency, details=details)
+        # Score line is suppressed in favor of the per-category detail lines
+        # below. The table renderer drops the no-record glyph when details
+        # exist, so the cell shows only ports/hostnames/tags/vulns.
+        verdict = Verdict.SUSPICIOUS if vulns else Verdict.CLEAN
+        return ProviderResult(self.name, verdict, "—", data, None, latency, details=details)
 
     def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
         # The InternetDB JSON itself is user-readable; no separate UI page.

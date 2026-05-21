@@ -134,13 +134,19 @@ def _format_provider_cell(result, *, ascii_only: bool, permalink: str | None = N
         glyph = (classify_error_ascii if ascii_only else classify_error)(result.error)
         body = f"[verdict.error]{glyph} {_escape(result.error) if result.error else 'err'}[/]"
     elif not result.score or result.score == "—":
-        cell_no = CELL_NO_RECORD_ASCII if ascii_only else CELL_NO_RECORD
-        body = f"[{VERDICT_STYLES[result.verdict]}]{cell_no}[/]"
+        # When details exist, drop the no-record placeholder so the cell
+        # shows only the meaningful detail lines (used by shodan, whose
+        # provider-side summary was removed in favor of per-category lines).
+        if result.details:
+            body = ""
+        else:
+            cell_no = CELL_NO_RECORD_ASCII if ascii_only else CELL_NO_RECORD
+            body = f"[{VERDICT_STYLES[result.verdict]}]{cell_no}[/]"
     else:
         body = f"[{VERDICT_STYLES[result.verdict]}]{_escape(result.score)}[/]"
     if result.details:
         detail_lines = "\n".join(f"[muted]{_escape(line)}[/]" for line in result.details)
-        body = f"{body}\n{detail_lines}"
+        body = f"{body}\n{detail_lines}" if body else detail_lines
     if permalink:
         return f"[link={permalink}]{body}[/link]"
     return body
