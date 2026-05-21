@@ -280,6 +280,21 @@ def main(argv: list[str] | None = None) -> int:
     return asyncio.run(_run_scan(parsed, config, args))
 
 
+def _progress_enabled(args) -> bool:
+    """Stderr progress is on only when the user is watching a table.
+
+    Disabled under --json (machine output), --quiet (TSV), legacy --json flag,
+    and --debug (avoids interleaving with log lines).
+    """
+    if getattr(args, "json", False):
+        return False
+    if getattr(args, "quiet", False):
+        return False
+    if getattr(args, "debug", False):
+        return False
+    return getattr(args, "format", "table") == "table"
+
+
 async def _run_scan(parsed, config, args) -> int:
     import time
     cache_path = Path(os.path.expanduser("~")) / ".iocscan" / "cache.db"
@@ -289,6 +304,8 @@ async def _run_scan(parsed, config, args) -> int:
     start_wall = time.perf_counter()
     try:
         scans = []
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+        from rich.console import Console
         async with _make_client(config.timeout_seconds) as client:
             for ioc, ioc_type in parsed:
                 cached = cache.get(ioc) if cache else {}
@@ -297,7 +314,33 @@ async def _run_scan(parsed, config, args) -> int:
                 else:
                     cache_fresh += 1
                 providers_to_query = [p for p in ALL_PROVIDERS if p.name not in cached]
-                scan = await scan_ioc(ioc, ioc_type, providers_to_query, client, config)
+                applicable = [p for p in providers_to_query if ioc_type in p.supports]
+                total_providers = len(applicable)
+
+                if _progress_enabled(args) and total_providers:
+                    # Transient progress: spinner clears once the IOC is done so
+                    # the final table renders without leftover ANSI artifacts.
+                    # force_terminal=True ensures output even when stderr is a
+                    # pipe (e.g. in tests), so callers can assert on the text.
+                    progress = Progress(
+                        SpinnerColumn(),
+                        TextColumn("Fetching data: {task.fields[ioc]} ({task.completed}/{task.total} providers)"),
+                        transient=True,
+                        # Stderr so stdout stays clean for piping table output.
+                        console=Console(stderr=True, force_terminal=True),
+                    )
+                    task_id = progress.add_task("scan", total=total_providers, ioc=ioc)
+                    progress.start()
+                    try:
+                        scan = await scan_ioc(
+                            ioc, ioc_type, providers_to_query, client, config,
+                            on_result=lambda _r, p=progress, t=task_id: p.advance(t),
+                        )
+                    finally:
+                        progress.stop()
+                else:
+                    scan = await scan_ioc(ioc, ioc_type, providers_to_query, client, config)
+
                 if cached:
                     merged_results = list(cached.values()) + scan.provider_results
                     enrichment_only = {p.name for p in ALL_PROVIDERS if p.enrichment_only}
