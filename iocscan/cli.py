@@ -565,10 +565,64 @@ def _cmd_health(args, config) -> int:
 
 
 def _cmd_providers(config) -> int:
+    """Sync entry point — kicks off the async probe + render."""
+    return asyncio.run(_cmd_providers_async(config))
+
+
+async def _cmd_providers_async(config) -> int:
+    from iocscan.core.observability import health_report
+    from iocscan.core.quota import QuotaResult, probe_quotas
+    from iocscan.ui.providers_table import render_providers_table
+
+    # Health (last 429s) is best-effort from the same SQLite cache file.
+    health: dict[str, object] = {}
+    try:
+        cache_path = Path(os.path.expanduser("~")) / ".iocscan" / "cache.db"
+        if cache_path.exists():
+            c = Cache(cache_path, ttl_seconds=config.cache_ttl_hours * 3600)
+            for h in health_report(c._conn):  # noqa: SLF001 — Cache exposes the conn for this purpose
+                health[h.provider] = h
+    except Exception:
+        # Observability is non-critical; an empty `health` just means "—" in the Last 429 column.
+        health = {}
+
+    # Only providers with a probeable quota endpoint trigger live probes.
+    probeable = [p for p in ALL_PROVIDERS if p.name in ("virustotal", "abuseipdb") and p.has_key(config)]
+
+    # force_terminal=True so spinner text reaches stderr even when stdout is captured in tests/pipes.
+    stderr_console = Console(stderr=True, force_terminal=True)
+    quotas: dict[str, QuotaResult] = {}
+    async with _make_client(config.timeout_seconds) as client:
+        if probeable:
+            progress = Progress(
+                SpinnerColumn(),
+                TextColumn("Fetching provider quotas… ({task.completed}/{task.total})"),
+                transient=True,
+                console=stderr_console,
+            )
+            task_id = progress.add_task("probe", total=len(probeable))
+            progress.start()
+            try:
+                quotas = await probe_quotas(probeable, config, client, timeout_seconds=20.0)
+                # Bump bar to full after all probes finish.
+                progress.update(task_id, completed=len(probeable))
+            finally:
+                progress.stop()
+
+    # Fill quota cells for providers we didn't probe.
     for p in ALL_PROVIDERS:
-        status = "active" if p.has_key(config) else "missing key"
-        kinds = ",".join(sorted(t.value for t in p.supports))
-        print(f"{p.name:12} [{kinds:>10}] {status}")
+        if p.name in quotas:
+            continue
+        if not p.has_key(config):
+            quotas[p.name] = QuotaResult(p.name, None, None, "No Key")
+        elif p.name in ("virustotal", "abuseipdb"):
+            # Had a key but wasn't included (defensive — shouldn't happen).
+            quotas[p.name] = QuotaResult(p.name, None, None, "error: not probed")
+        else:
+            quotas[p.name] = QuotaResult(p.name, None, None, "no quota API")
+
+    stdout_console = Console()
+    render_providers_table(ALL_PROVIDERS, config, quotas, health, stdout_console)
     return 0
 
 
