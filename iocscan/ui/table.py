@@ -58,7 +58,7 @@ AUTO_NARROW_THRESHOLD = 100
 # Fallback gray when the active console has no `table.border` theme entry
 # (e.g. bare Console() in tests). Picked to be visible-but-dim on both
 # dark and light terminals.
-_BORDER_FALLBACK = "grey37"
+_BORDER_FALLBACK = "grey70"
 
 
 def _border_style(console: Console) -> str:
@@ -125,15 +125,28 @@ def _format_provider_cell(result, *, ascii_only: bool, permalink: str | None = N
     render OSC 8 hyperlinks add their own underline that cannot be suppressed
     from the application side, so callers pass ``permalink=None`` to keep
     cells visually clean.
+
+    If ``result.details`` is non-empty, each detail line is rendered below the
+    score in a muted style — used today by Shodan to surface ports/hostnames/
+    tags/vulns without polluting the short ``score`` summary.
     """
     if result.verdict == Verdict.ERROR:
         glyph = (classify_error_ascii if ascii_only else classify_error)(result.error)
         body = f"[verdict.error]{glyph} {_escape(result.error) if result.error else 'err'}[/]"
     elif not result.score or result.score == "—":
-        cell_no = CELL_NO_RECORD_ASCII if ascii_only else CELL_NO_RECORD
-        body = f"[{VERDICT_STYLES[result.verdict]}]{cell_no}[/]"
+        # When details exist, drop the no-record placeholder so the cell
+        # shows only the meaningful detail lines (used by shodan, whose
+        # provider-side summary was removed in favor of per-category lines).
+        if result.details:
+            body = ""
+        else:
+            cell_no = CELL_NO_RECORD_ASCII if ascii_only else CELL_NO_RECORD
+            body = f"[{VERDICT_STYLES[result.verdict]}]{cell_no}[/]"
     else:
         body = f"[{VERDICT_STYLES[result.verdict]}]{_escape(result.score)}[/]"
+    if result.details:
+        detail_lines = "\n".join(f"[muted]{_escape(line)}[/]" for line in result.details)
+        body = f"{body}\n{detail_lines}" if body else detail_lines
     if permalink:
         return f"[link={permalink}]{body}[/link]"
     return body
