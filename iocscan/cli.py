@@ -16,6 +16,9 @@ from iocscan.core.scan import ScanResult, _apply_whitelist, scan_ioc, sort_scans
 from iocscan.core.verdict import aggregate, coverage
 from iocscan.providers import ALL_PROVIDERS
 from iocscan.providers.base import ProviderResult, Verdict
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
 from iocscan.ui.console import make_console
 from iocscan.ui.export import EXPORT_FORMATS, render_export
 from iocscan.ui.footer import render_summary
@@ -304,8 +307,6 @@ async def _run_scan(parsed, config, args) -> int:
     start_wall = time.perf_counter()
     try:
         scans = []
-        from rich.progress import Progress, SpinnerColumn, TextColumn
-        from rich.console import Console
         async with _make_client(config.timeout_seconds) as client:
             for ioc, ioc_type in parsed:
                 cached = cache.get(ioc) if cache else {}
