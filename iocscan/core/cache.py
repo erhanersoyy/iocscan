@@ -11,14 +11,15 @@ from iocscan.providers.base import ProviderResult, Verdict
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS results (
-  ioc        TEXT NOT NULL,
-  provider   TEXT NOT NULL,
-  fetched_at INTEGER NOT NULL,
-  verdict    TEXT NOT NULL,
-  score      TEXT NOT NULL,
-  error      TEXT,
-  raw_json   TEXT,
-  latency_ms INTEGER NOT NULL,
+  ioc          TEXT NOT NULL,
+  provider     TEXT NOT NULL,
+  fetched_at   INTEGER NOT NULL,
+  verdict      TEXT NOT NULL,
+  score        TEXT NOT NULL,
+  error        TEXT,
+  raw_json     TEXT,
+  latency_ms   INTEGER NOT NULL,
+  details_json TEXT,
   PRIMARY KEY (ioc, provider)
 );
 """
@@ -39,6 +40,12 @@ class Cache:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=3000")
         self._conn.executescript(SCHEMA)
+        # Best-effort migration for caches created before details_json existed;
+        # SQLite raises if the column is already there, so swallow that case.
+        try:
+            self._conn.execute("ALTER TABLE results ADD COLUMN details_json TEXT")
+        except sqlite3.OperationalError:
+            pass
         # Observability shares this DB — apply its schema too so the table
         # exists before the first `record_observations` write.
         self._conn.executescript(_obs.SCHEMA)
@@ -55,12 +62,13 @@ class Cache:
     def get(self, ioc: str) -> dict[str, ProviderResult]:
         cutoff = int(time.time()) - self.ttl
         rows = self._conn.execute(
-            "SELECT provider, verdict, score, error, raw_json, latency_ms "
+            "SELECT provider, verdict, score, error, raw_json, latency_ms, details_json "
             "FROM results WHERE ioc = ? AND fetched_at > ?",
             (ioc, cutoff),
         ).fetchall()
         out: dict[str, ProviderResult] = {}
-        for provider, verdict, score, error, raw_json, latency in rows:
+        for provider, verdict, score, error, raw_json, latency, details_json in rows:
+            details = tuple(json.loads(details_json)) if details_json else ()
             out[provider] = ProviderResult(
                 provider=provider,
                 verdict=Verdict(verdict),
@@ -68,6 +76,7 @@ class Cache:
                 raw=json.loads(raw_json) if raw_json else None,
                 error=error,
                 latency_ms=latency,
+                details=details,
             )
         return out
 
@@ -76,11 +85,12 @@ class Cache:
         with self._conn:
             self._conn.executemany(
                 "INSERT OR REPLACE INTO results "
-                "(ioc, provider, fetched_at, verdict, score, error, raw_json, latency_ms) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "(ioc, provider, fetched_at, verdict, score, error, raw_json, latency_ms, details_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (ioc, r.provider, now, r.verdict.value, r.score, r.error,
-                     json.dumps(r.raw) if r.raw is not None else None, r.latency_ms)
+                     json.dumps(r.raw) if r.raw is not None else None, r.latency_ms,
+                     json.dumps(list(r.details)) if r.details else None)
                     for r in results
                 ],
             )

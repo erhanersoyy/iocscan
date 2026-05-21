@@ -233,5 +233,7 @@ def _render_compact(
             if link:
                 line = f"[link={link}]{line}[/link]"
             lines.append(line)
+            for detail in (r.details or ()):
+                lines.append(f"  [muted]{_escape(detail)}[/]")
         t.add_row(_escape(_display_ioc(s.ioc, defang=defang)), verdict_text, "\n".join(lines))
     console.print(t)

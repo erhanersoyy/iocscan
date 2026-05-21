@@ -14,6 +14,20 @@ from iocscan.providers.base import Provider
 from iocscan.ui.table import _border_style
 
 
+def _fmt_rate(p: Provider) -> str:
+    """Render the static rate-limit budget declared on the provider class.
+
+    `max_rps` is expressed per-second internally; surface it as req/min so it
+    reads alongside the daily cap. Returns "—" when nothing is declared.
+    """
+    parts: list[str] = []
+    if p.max_rps:
+        parts.append(f"{round(p.max_rps * 60)}/min")
+    if p.max_per_day:
+        parts.append(f"{p.max_per_day}/day")
+    return " · ".join(parts) if parts else "—"
+
+
 def render_providers_table(
     providers: list[Provider],
     config: Config,
@@ -32,8 +46,8 @@ def render_providers_table(
     t.add_column("Provider")
     t.add_column("Supports")
     t.add_column("Status")
-    t.add_column("Quota")
-    t.add_column("Last 429")
+    t.add_column("Quota / Rate Limits")
+    t.add_column("Last Rate Limit Hit")
 
     for p in providers:
         active = p.has_key(config)
@@ -47,6 +61,7 @@ def render_providers_table(
             quota_cell = f"{q.used} / {q.allowed}"
         else:
             quota_cell = q.note or "—"
+        quota_cell = f"{quota_cell} / {_fmt_rate(p)}"
         h = health.get(p.name)
         if h and h.last_429_at:
             last_429 = datetime.fromtimestamp(h.last_429_at).strftime("%Y-%m-%d %H:%M")

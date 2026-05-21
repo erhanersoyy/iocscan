@@ -24,7 +24,7 @@ ENV_VARS = {
 class Config:
     keys: dict[str, str] = field(default_factory=dict)
     cache_ttl_hours: int = 24
-    timeout_seconds: int = 10
+    timeout_seconds: int = 20
     min_coverage: int = 3
     path: Path | None = None
 
@@ -95,7 +95,7 @@ def load_config(cli_keys: dict[str, str] | None = None) -> Config:
     return Config(
         keys=merged,
         cache_ttl_hours=int(settings.get("cache_ttl_hours", 24)),
-        timeout_seconds=int(settings.get("timeout_seconds", 10)),
+        timeout_seconds=int(settings.get("timeout_seconds", 20)),
         min_coverage=int(settings.get("min_coverage", 3)),
         path=path,
     )

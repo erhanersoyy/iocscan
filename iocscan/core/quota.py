@@ -93,8 +93,12 @@ async def _probe_vt(config: Config, client: httpx.AsyncClient) -> QuotaResult:
     if resp.status_code != 200:
         return QuotaResult("virustotal", None, None, f"error: {resp.status_code}")
     try:
-        daily = resp.json()["data"]["attributes"]["api_requests_daily"]["user"]
-    except (KeyError, ValueError):
+        # VT v3 overall_quotas response shape (as of 2026):
+        #   {"data": {"api_requests_daily": {"user": {"used": N, "allowed": M}}, ...}}
+        # Earlier docs/snippets show an `attributes` wrapper that the live API
+        # no longer returns — accessing it raised KeyError ("error: parse").
+        daily = resp.json()["data"]["api_requests_daily"]["user"]
+    except (KeyError, ValueError, TypeError):
         return QuotaResult("virustotal", None, None, "error: parse")
     return QuotaResult("virustotal", int(daily["used"]), int(daily["allowed"]), "")
 

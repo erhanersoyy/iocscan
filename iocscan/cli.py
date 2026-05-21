@@ -538,7 +538,7 @@ def _cmd_health(args, config) -> int:
         t.add_column("err %", justify="right")
         t.add_column("p95 ms", justify="right")
         t.add_column("last error")
-        t.add_column("last 429")
+        t.add_column("last rate limit hit")
         t.add_column("last 5xx")
 
         def _fmt_ts(ts):
@@ -575,7 +575,7 @@ async def _cmd_providers_async(config) -> int:
     from iocscan.core.quota import QuotaResult, probe_quotas
     from iocscan.ui.providers_table import render_providers_table
 
-    # Health (last 429s) is best-effort from the same SQLite cache file.
+    # Health (last rate-limit hits) is best-effort from the same SQLite cache file.
     health: dict[str, ProviderHealth] = {}
     try:
         cache_path = Path(os.path.expanduser("~")) / ".iocscan" / "cache.db"
@@ -587,7 +587,7 @@ async def _cmd_providers_async(config) -> int:
             finally:
                 c.close()
     except (sqlite3.Error, ValueError, OSError):
-        # Observability is non-critical; an empty `health` just means "—" in the Last 429 column.
+        # Observability is non-critical; an empty `health` just means "—" in the Last Rate Limit Hit column.
         health = {}
 
     # Only providers with a probeable quota endpoint trigger live probes.
