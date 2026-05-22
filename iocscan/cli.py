@@ -77,26 +77,67 @@ def _read_inputs(args) -> list[str]:
 _SUBCOMMANDS = {"config", "cache", "providers", "whitelist", "explain", "health"}
 
 
+_SCAN_EPILOG = """\
+Subcommands:
+  iocscan config {set,show,path}        manage API keys (TOML at ~/.iocscan/config.toml)
+  iocscan cache {clear,stats}           inspect or clear the SQLite result cache
+  iocscan providers                     list providers, key status, and live quota
+  iocscan whitelist {update,stats}      manage the Tranco top-1K domain cache
+  iocscan explain <ioc>                 per-provider rationale and weighted-voting math
+  iocscan health [--days N]             provider error rates and p95 latency
+
+Examples:
+  iocscan 1.2.3.4 evil.com              scan two IOCs, render the default table
+  iocscan -f iocs.txt --sort verdict    worst-first sort, IOCs read from file
+  iocscan --json 8.8.8.8                machine-readable JSON output
+  iocscan -F kql-sentinel -f iocs.txt   SIEM-ready Microsoft Sentinel query
+  iocscan --debug evil.com              verbose stderr (HTTP, errors)
+  iocscan providers                     show which providers have keys configured
+
+Exit codes:
+  0 clean   1 malicious   2 suspicious   3 arg/input error   4 all providers failed   5 all unknown
+
+Environment:
+  IOCSCAN_*_KEY    API keys (preferred over --*-key flags; see 'iocscan providers')
+  IOCSCAN_THEME    default color theme
+  NO_COLOR         disable ANSI colors (standard)
+  FORCE_COLOR      force ANSI colors when not a TTY (standard)
+
+Security note: passing API keys via --*-key flags exposes them to other local users
+(visible in 'ps'). Prefer IOCSCAN_*_KEY env vars or 'iocscan config set <provider> <value>'."""
+
+
 def _build_scan_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="iocscan",
-        description="Consolidated TI verdict for IPs and domains.",
-        epilog="Security note: passing API keys via --*-key flags exposes them to other local users (visible in 'ps'). Prefer IOCSCAN_*_KEY env vars or 'iocscan config set <provider> <value>'."
+        formatter_class=argparse.RawTextHelpFormatter,
+        description=(
+            f"Consolidated threat-intel verdict (malicious / suspicious / clean / unknown) for IPs and domains.\n"
+            f"Queries {len(ALL_PROVIDERS)} open-source providers concurrently, aggregates with weighted voting,\n"
+            f"and clamps known-good domains via a bundled allowlist + optional Tranco top-1K cache."
+        ),
+        epilog=_SCAN_EPILOG,
     )
-    p.add_argument("iocs", nargs="*", help="IPs or domains to scan")
-    p.add_argument("-f", "--file", help="read IOCs from file (one per line, # comments)")
+    p.add_argument("iocs", nargs="*", help="IPs or domains to scan (omit to read from -f or stdin)")
+    p.add_argument("-f", "--file", help="read IOCs from file (one per line, '#' starts a comment; '-' reads stdin)")
     p.add_argument(
         "-F", "--format",
         choices=FORMAT_CHOICES,
         default="table",
-        help="output format (default: table). table/json render as before; jsonl/csv/markdown are flat summary exports.",
+        metavar="FORMAT",
+        help=(
+            "output format (default: table).\n"
+            "  render:  table, json\n"
+            "  exports: jsonl, csv, markdown\n"
+            "  SIEM:    splunk-spl, kql-sentinel, kql-defender, crowdstrike-fql,\n"
+            "           elastic-eql, elastic-lucene, suricata-ip-rules"
+        ),
     )
     p.add_argument("--json", action="store_true", help="deprecated alias for --format json")
     p.add_argument("--no-cache", action="store_true", help="bypass cache for this run")
     p.add_argument("--debug", action="store_true", help="verbose stderr (HTTP, errors)")
     p.add_argument("--narrow", action="store_true", help="force compact table layout")
     p.add_argument("--wide", action="store_true", help="force wide table layout (overrides terminal-width auto-detect)")
-    p.add_argument("--no-color", action="store_true", help="disable ANSI colors (equivalent to NO_COLOR=1)")
     p.add_argument("--ascii", action="store_true", help="use ASCII glyphs ([!], [~], [ ], …) instead of Unicode")
     p.add_argument(
         "--theme",
@@ -148,42 +189,62 @@ def _build_scan_parser() -> argparse.ArgumentParser:
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="iocscan",
-                                description="Consolidated TI verdict for IPs and domains.")
-    sub = p.add_subparsers(dest="cmd")
+    p = argparse.ArgumentParser(
+        prog="iocscan",
+        description="iocscan subcommands. Run 'iocscan --help' (no subcommand) for the scan interface.",
+    )
+    sub = p.add_subparsers(dest="cmd", metavar="<subcommand>")
 
-    config_p = sub.add_parser("config", help="manage configuration")
-    cfg_sub = config_p.add_subparsers(dest="config_cmd")
-    set_p = cfg_sub.add_parser("set")
-    set_p.add_argument("provider")
-    set_p.add_argument("value")
-    cfg_sub.add_parser("show")
-    cfg_sub.add_parser("path")
+    config_p = sub.add_parser(
+        "config",
+        help="manage API keys stored in ~/.iocscan/config.toml",
+        description="Manage the local config TOML (~/.iocscan/config.toml, 0o600).",
+    )
+    cfg_sub = config_p.add_subparsers(dest="config_cmd", metavar="<action>")
+    set_p = cfg_sub.add_parser("set", help="store an API key in the config file")
+    set_p.add_argument("provider", help="provider name (e.g. virustotal, abuseipdb, otx, abusech, greynoise, urlscan)")
+    set_p.add_argument("value", help="API key value")
+    cfg_sub.add_parser("show", help="print the resolved config (keys are redacted)")
+    cfg_sub.add_parser("path", help="print the absolute path of the config file")
 
-    cache_p = sub.add_parser("cache", help="manage cache")
-    cache_sub = cache_p.add_subparsers(dest="cache_cmd")
-    cache_sub.add_parser("clear")
-    cache_sub.add_parser("stats")
+    cache_p = sub.add_parser(
+        "cache",
+        help="manage the SQLite result cache (~/.iocscan/cache.db)",
+        description="Inspect or clear the cached per-provider lookup results.",
+    )
+    cache_sub = cache_p.add_subparsers(dest="cache_cmd", metavar="<action>")
+    cache_sub.add_parser("clear", help="delete all cached rows")
+    cache_sub.add_parser("stats", help="show row count, size, and TTL of the cache")
 
-    sub.add_parser("providers", help="list providers and their status")
+    sub.add_parser(
+        "providers",
+        help="list providers, key status, and live API quota",
+        description="Print one row per provider: configured key, rate limit, and (when available) remaining quota.",
+    )
 
     explain_p = sub.add_parser(
         "explain",
-        help="explain verdict for one IOC (per-provider rationale + math)",
+        help="explain the verdict for one IOC (per-provider rationale + voting math)",
+        description="Run a scan for a single IOC and print why each provider voted the way it did.",
     )
-    explain_p.add_argument("ioc", help="single IOC to explain")
+    explain_p.add_argument("ioc", help="single IP or domain to explain")
 
-    wl_p = sub.add_parser("whitelist", help="manage Tranco top-1K whitelist cache")
-    wl_sub = wl_p.add_subparsers(dest="wl_cmd")
+    wl_p = sub.add_parser(
+        "whitelist",
+        help="manage the Tranco top-1K whitelist cache",
+        description="The Tranco top-1K cache is optional; when present it clamps malicious/suspicious verdicts to clean for popular domains.",
+    )
+    wl_sub = wl_p.add_subparsers(dest="wl_cmd", metavar="<action>")
     wl_sub.add_parser("update", help="fetch latest Tranco top-1K and cache it")
-    wl_sub.add_parser("stats", help="show whitelist cache status")
+    wl_sub.add_parser("stats", help="show whitelist cache status (size, age)")
 
     health_p = sub.add_parser(
         "health",
         help="per-provider operational health (last error, p95 latency, error rate)",
+        description="Aggregates the observability table to surface which providers are failing right now.",
     )
     health_p.add_argument(
-        "--days", type=int, default=7,
+        "--days", type=int, default=7, metavar="N",
         help="lookback window in days (default: 7)",
     )
     return p
@@ -206,7 +267,6 @@ def main(argv: list[str] | None = None) -> int:
         args.debug = False
         args.narrow = False
         args.wide = False
-        args.no_color = False
         args.ascii = False
         args.theme = os.environ.get("IOCSCAN_THEME", DEFAULT_THEME)
         args.list_themes = False
@@ -421,7 +481,7 @@ async def _run_scan(parsed, config, args) -> int:
         elif fmt in EXPORT_FORMATS:
             print(render_export(scans_out, fmt, defang=args.defang))
         else:  # table
-            console = make_console(no_color=args.no_color, ascii_only=args.ascii, theme=args.theme)
+            console = make_console(ascii_only=args.ascii, theme=args.theme)
             render_table(
                 scans_out, console,
                 narrow=args.narrow, wide=args.wide,
@@ -652,7 +712,7 @@ def _emit_links(scans, providers) -> None:
 def _cmd_list_themes(args) -> int:
     """One-line preview of every theme, then exit."""
     for name in list_theme_names():
-        console = make_console(no_color=args.no_color, theme=name)
+        console = make_console(theme=name)
         marker = " (default)" if name == DEFAULT_THEME else ""
         console.print(
             f"[table.header]{name}[/]{marker}: "
