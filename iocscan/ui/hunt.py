@@ -1,17 +1,13 @@
 """Hunt-query emitters: turn iocscan results into SIEM/EDR queries.
 
-Each emitter takes the post-aggregation scan list, keeps only the
-MALICIOUS / SUSPICIOUS IOCs that survived the whitelist clamp, and
-returns a single string the analyst can paste into their platform.
-
-If no IOCs warrant hunting, the output is a single platform-appropriate
-comment so consumers always receive a syntactically valid (but no-op)
-query.
+Every supplied IOC goes into the query regardless of verdict or whitelist
+status — triage belongs to the table/JSON view; hunt is a verbatim
+IOC → query translator. Empty input yields a single no-op comment.
 """
 from __future__ import annotations
 
 from iocscan.core.scan import ScanResult
-from iocscan.providers.base import IOCType, Verdict
+from iocscan.providers.base import IOCType
 
 
 HUNT_FORMATS = (
@@ -45,12 +41,8 @@ def render_hunt(scans: list[ScanResult], fmt: str) -> str:
 
 
 def _partition(scans: list[ScanResult]) -> dict[IOCType, list[str]]:
-    """Keep only MALICIOUS/SUSPICIOUS and not-whitelisted; bucket by IOCType."""
-    bad = (Verdict.MALICIOUS, Verdict.SUSPICIOUS)
     out: dict[IOCType, list[str]] = {}
     for s in scans:
-        if s.verdict not in bad or s.whitelisted:
-            continue
         out.setdefault(s.ioc_type, []).append(s.ioc)
     return out
 
@@ -88,28 +80,78 @@ def _q_sq(values: list[str]) -> str:
 
 
 def _splunk_spl(by: dict[IOCType, list[str]]) -> str:
+    """Emit CIM-compliant Splunk hunt SPL via tstats over accelerated datamodels.
+
+    `summariesonly=false` so non-accelerated environments still return results;
+    triple-backtick comments because // is SPL2-only and would tokenise as
+    literal search terms in classic SPL1.
+    """
     if not _has_any(by):
-        return "// no IOCs to hunt"
-    clauses: list[str] = []
+        return "``` no IOCs to hunt ```"
+
     ips = by.get(IOCType.IP, [])
-    if ips:
-        ip_list = _q_dq(ips)
-        clauses.append(f"src_ip IN ({ip_list})")
-        clauses.append(f"dest_ip IN ({ip_list})")
-    if by.get(IOCType.DOMAIN):
-        clauses.append(f"dns_query IN ({_q_dq(by[IOCType.DOMAIN])})")
-    if by.get(IOCType.URL):
-        clauses.append(f"url IN ({_q_dq(by[IOCType.URL])})")
-    # Hash IOCs: file_hash search across MD5/SHA1/SHA256.
+    domains = by.get(IOCType.DOMAIN, [])
+    urls = by.get(IOCType.URL, [])
     hashes: list[str] = []
     for t in (IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256):
         hashes.extend(by.get(t, []))
+
+    blocks: list[str] = [
+        "``` iocscan hunt — earliest=-90d, summariesonly=false ```",
+    ]
+
+    if ips:
+        lst = _q_dq(ips)
+        blocks.append(_tstats_block(
+            "Network_Traffic", "All_Traffic",
+            f"(All_Traffic.src IN ({lst}) OR All_Traffic.dest IN ({lst}))",
+            ["All_Traffic.src", "All_Traffic.dest", "All_Traffic.dest_port", "sourcetype"],
+        ))
+
+    if domains:
+        blocks.append(_tstats_block(
+            "Network_Resolution", "DNS",
+            f"DNS.query IN ({_q_dq(domains)})",
+            ["DNS.src", "DNS.query", "DNS.answer", "DNS.record_type"],
+        ))
+
+    if urls:
+        # `*X*` already matches X exactly; substring form also catches logged
+        # URLs with appended query strings the IOC list doesn't carry verbatim.
+        wild = " OR ".join(f'Web.url="*{_esc_dq(u)}*"' for u in urls)
+        blocks.append(_tstats_block(
+            "Web", "Web",
+            f"({wild})",
+            ["Web.src", "Web.dest", "Web.url", "Web.http_user_agent"],
+        ))
+
     if hashes:
-        clauses.append(f"file_hash IN ({_q_dq(hashes)})")
-    body = " OR ".join(clauses)
+        lst = _q_dq(hashes)
+        # Process executions and filesystem artefacts live in separate
+        # Endpoint datasets — hit both.
+        blocks.append(_tstats_block(
+            "Endpoint", "Processes",
+            f"Processes.process_hash IN ({lst})",
+            ["Processes.dest", "Processes.user", "Processes.process_name", "Processes.process_hash"],
+        ))
+        blocks.append(_tstats_block(
+            "Endpoint", "Filesystem",
+            f"Filesystem.file_hash IN ({lst})",
+            ["Filesystem.dest", "Filesystem.user", "Filesystem.file_name", "Filesystem.file_path", "Filesystem.file_hash"],
+        ))
+
+    return "\n\n".join(blocks)
+
+
+def _tstats_block(datamodel: str, dataset: str, where: str, by: list[str]) -> str:
     return (
-        f"index=* earliest=-90d ({body})\n"
-        f"| stats count by host, src_ip, dest_ip, _time"
+        f"| tstats summariesonly=false count "
+        f"min(_time) as firstTime max(_time) as lastTime "
+        f"from datamodel={datamodel}.{dataset} "
+        f"where earliest=-90d {where} "
+        f"by {' '.join(by)} "
+        f'| `drop_dm_object_name("{dataset}")` '
+        f"| convert ctime(firstTime) ctime(lastTime)"
     )
 
 
@@ -119,25 +161,22 @@ def _kql_sentinel(by: dict[IOCType, list[str]]) -> str:
     parts: list[str] = []
     ips = by.get(IOCType.IP, [])
     if ips:
-        parts.append(
-            f"DeviceNetworkEvents | where RemoteIP in~ ({_q_dq(ips)})"
-        )
-    if by.get(IOCType.DOMAIN):
-        parts.append(
-            f"DnsEvents | where Name in~ ({_q_dq(by[IOCType.DOMAIN])})"
-        )
-    if by.get(IOCType.URL):
-        parts.append(
-            f"DeviceNetworkEvents | where RemoteUrl in~ ({_q_dq(by[IOCType.URL])})"
-        )
+        parts.append(f"DeviceNetworkEvents | where RemoteIP in~ ({_q_dq(ips)})")
+    domains = by.get(IOCType.DOMAIN, [])
+    if domains:
+        parts.append(f"DnsEvents | where Name in~ ({_q_dq(domains)})")
+    urls = by.get(IOCType.URL, [])
+    if urls:
+        parts.append(f"DeviceNetworkEvents | where RemoteUrl in~ ({_q_dq(urls)})")
     hashes: list[str] = []
     for t in (IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256):
         hashes.extend(by.get(t, []))
     if hashes:
+        h = _q_dq(hashes)
         parts.append(
-            f"DeviceFileEvents | where SHA256 in~ ({_q_dq(hashes)}) "
-            f"or SHA1 in~ ({_q_dq(hashes)}) "
-            f"or MD5 in~ ({_q_dq(hashes)})"
+            f"DeviceFileEvents | where SHA256 in~ ({h}) "
+            f"or SHA1 in~ ({h}) "
+            f"or MD5 in~ ({h})"
         )
     if len(parts) == 1:
         return parts[0]
