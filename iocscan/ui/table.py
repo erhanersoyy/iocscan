@@ -141,7 +141,14 @@ def _format_provider_cell(result, *, ascii_only: bool, permalink: str | None = N
             body = ""
         else:
             cell_no = CELL_NO_RECORD_ASCII if ascii_only else CELL_NO_RECORD
-            body = f"[{VERDICT_STYLES[result.verdict]}]{cell_no}[/]"
+            style = VERDICT_STYLES[result.verdict]
+            if result.verdict == Verdict.CLEAN:
+                # README documents this cell as '— (no hit - clean)'. Only
+                # applies when the provider voted CLEAN; UNKNOWN scoreless
+                # rows stay as the bare em-dash so coverage math reads cleanly.
+                body = f"[{style}]{cell_no}[/] [muted](no hit - clean)[/]"
+            else:
+                body = f"[{style}]{cell_no}[/]"
     else:
         body = f"[{VERDICT_STYLES[result.verdict]}]{_escape(result.score)}[/]"
     if result.details:
