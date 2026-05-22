@@ -15,7 +15,9 @@ def _scan(ioc, ioc_type, verdict, *, whitelisted=False):
 
 # ---- partitioning / scoping ----
 
-def test_only_malicious_and_suspicious_are_kept():
+def test_all_verdicts_pass_through():
+    """Hunt queries include every supplied IOC regardless of verdict —
+    triage is the table view's job, hunt is a verbatim translator."""
     scans = [
         _scan("1.1.1.1", IOCType.IP, Verdict.MALICIOUS),
         _scan("2.2.2.2", IOCType.IP, Verdict.CLEAN),
@@ -23,24 +25,23 @@ def test_only_malicious_and_suspicious_are_kept():
         _scan("4.4.4.4", IOCType.IP, Verdict.SUSPICIOUS),
     ]
     out = render_hunt(scans, "splunk-spl")
-    assert "1.1.1.1" in out
-    assert "4.4.4.4" in out
-    assert "2.2.2.2" not in out
-    assert "3.3.3.3" not in out
+    for ip in ("1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"):
+        assert ip in out
 
 
-def test_whitelisted_iocs_are_excluded():
+def test_whitelisted_iocs_pass_through():
+    """Whitelist clamps the verdict shown to the analyst but does NOT
+    suppress the IOC from hunt output — the analyst may still want to
+    sweep their SIEM for the term."""
     scans = [_scan("evil.com", IOCType.DOMAIN, Verdict.MALICIOUS, whitelisted=True)]
     out = render_hunt(scans, "splunk-spl")
-    assert "evil.com" not in out
-    assert "no IOCs" in out
+    assert "evil.com" in out
 
 
 def test_empty_input_produces_no_op_comment_for_every_format():
     for fmt in HUNT_FORMATS:
         out = render_hunt([], fmt)
-        # Format-appropriate comment marker:
-        assert out.startswith(("//", "#"))
+        assert out.startswith(("//", "#", "```"))
 
 
 # ---- per-emitter shape ----
@@ -53,11 +54,14 @@ def test_splunk_spl_groups_ip_domain_url_hash():
         _scan("d41d8cd98f00b204e9800998ecf8427e", IOCType.HASH_MD5, Verdict.MALICIOUS),
     ]
     out = render_hunt(scans, "splunk-spl")
-    assert "src_ip IN" in out and "1.1.1.1" in out
-    assert "dns_query IN" in out and "evil.com" in out
-    assert "url IN" in out
-    assert "file_hash IN" in out
-    assert out.startswith("index=* earliest=-90d")
+    assert "All_Traffic.src IN" in out and "1.1.1.1" in out
+    assert "DNS.query IN" in out and "evil.com" in out
+    assert 'Web.url="*https://evil.com/x*"' in out
+    assert "Processes.process_hash IN" in out
+    assert "Filesystem.file_hash IN" in out
+    assert "| tstats" in out
+    assert "datamodel=Network_Traffic.All_Traffic" in out
+    assert out.startswith("```")
 
 
 def test_kql_sentinel_emits_union_when_multiple_types():
