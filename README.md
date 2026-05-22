@@ -3,9 +3,9 @@
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Blue-team CLI that produces a consolidated `malicious / suspicious / clean / unknown` verdict for IP addresses and domains by querying **nine** open-source threat-intelligence providers in parallel.
+Blue-team CLI that produces a consolidated `malicious / suspicious / clean / unknown` verdict for IP addresses, domains, URLs and file hashes by querying multiple open-source threat-intelligence providers in parallel.
 
-Four providers work out of the box (no API key). Five more activate when you add free-tier API keys.
+Many providers work out of the box (no API key). The rest activate when you add free-tier API keys.
 
 ---
 
@@ -43,41 +43,85 @@ iocscan understands common defanged formats (`evil[.]com`, `1[.]2[.]3[.]4`, `hxx
 > Tip: if `python -m iocscan ...` feels verbose, add an alias to your shell rc:
 > `alias iocscan='python -m iocscan'` — then everything below works as `iocscan ...`.
 
-### Single-IOC aliases for common SOC tasks
+---
 
-Most triage hits are a single IOC at a time. Drop these into `~/.zshrc` / `~/.bashrc`
-and they become muscle memory:
+## Aliases
+
+A set of alias suggestions is provided to make IOC analysis faster and simpler. Drop them into your shell rc file — `~/.zshrc`, `~/.bashrc`, `~/.config/fish/config.fish`, or whichever shell you use. After reloading (`source ~/.zshrc`), every common triage flow becomes a one-line command.
 
 ```bash
-# 1) Quick verdict — minimum noise, just the line: "ioc<TAB>verdict<TAB>n/m"
-alias ti='python -m iocscan --quiet'                          # ti 1.2.3.4
+# 1) Base alias — replaces "python -m iocscan" with a short word
+alias ioc='python -m iocscan'                                # ioc 1.2.3.4
 
-# 2) Full evidence — every provider's cell, wide table forced
-alias ti-full='python -m iocscan --wide --no-cache'           # ti-full evil.com
+# 2) Quick verdict — minimum noise: "ioc<TAB>verdict<TAB>n/m"
+alias ioc-q='python -m iocscan --quiet'                      # ioc-q 1.2.3.4
 
-# 3) Defanged output for tickets / email / chat (no auto-link)
-alias ti-safe='python -m iocscan --defang --quiet'            # ti-safe 1.2.3.4
+# 3) Full evidence — every provider's cell, force wide table
+alias ioc-full='python -m iocscan --wide'                    # ioc-full evil.com
 
-# 4) Explain mode — show *why* the verdict is what it is (per-provider reasoning)
-alias ti-why='python -m iocscan explain'                      # ti-why 1.2.3.4
+# 4) Defanged output — safe to paste into tickets, chat, email
+alias ioc-safe='python -m iocscan --defang'                  # ioc-safe 1.2.3.4
 
-# 5) JSON for piping into jq / SIEM / Slack bot
-alias ti-json='python -m iocscan --format json'               # ti-json evil.com | jq .
-alias ti-vt='python -m iocscan --format json'                 # ti-vt 1.2.3.4 | jq '.results[0].providers.virustotal'
+# 5) Explain mode — per-provider rationale and verdict math
+alias ioc-why='python -m iocscan explain'                    # ioc-why 1.2.3.4
 
-# 6) Hyperlinked cells (terminal-rendered underline) — opt in when you actually want to click through
-alias ti-link='python -m iocscan --cell-links --wide'         # ti-link 1.2.3.4
+# 6) JSON output — pipe into jq, SIEM, Slack bot, anything
+alias ioc-json='python -m iocscan --format json'             # ioc-json evil.com | jq .
 
-# 7) Hunt-query emit — turn one IOC into a Splunk / Sentinel / Defender search string
-alias ti-splunk='python -m iocscan -F splunk-spl'             # ti-splunk 1.2.3.4
-alias ti-sentinel='python -m iocscan -F kql-sentinel'         # ti-sentinel evil.com
-alias ti-defender='python -m iocscan -F kql-defender'         # ti-defender 1.2.3.4
+# 7) Hyperlinked cells — terminal underlines clickable provider links
+alias ioc-link='python -m iocscan --cell-links --wide'       # ioc-link 1.2.3.4
 
-# 8) Skip cache for a fresh look (useful right after publishing a blocklist update)
-alias ti-fresh='python -m iocscan --no-cache --wide'          # ti-fresh 1.2.3.4
+# 8) Fresh look — bypass cache, useful right after a blocklist update
+alias ioc-fresh='python -m iocscan --no-cache --wide'        # ioc-fresh 1.2.3.4
+
+# 9) Splunk hunt query — emit SPL search string for SOC pivots
+alias ioc-splunk='python -m iocscan -F splunk-spl'           # ioc-splunk 1.2.3.4
+
+# 10) Microsoft Sentinel KQL hunt query
+alias ioc-sentinel='python -m iocscan -F kql-sentinel'       # ioc-sentinel evil.com
+
+# 11) Microsoft Defender KQL hunt query
+alias ioc-defender='python -m iocscan -F kql-defender'       # ioc-defender 1.2.3.4
+
+# 12) CSV export — ticket attachments, spreadsheet imports
+alias ioc-csv='python -m iocscan -F csv'                     # ioc-csv -f iocs.txt > out.csv
+
+# 13) Markdown table — paste straight into PR / Confluence / ticket
+alias ioc-md='python -m iocscan -F markdown'                 # ioc-md 1.2.3.4
+
+# 14) Worst-first sort — surface malicious IOCs at the top of bulk scans
+alias ioc-sort='python -m iocscan --sort verdict'            # ioc-sort -f iocs.txt
+
+# 15) Provider status — see what's active vs. missing-key at a glance
+alias ioc-prov='python -m iocscan providers'                 # ioc-prov
 ```
 
 Pick the two or three you actually use. The point is: one IOC → one short command.
+
+---
+
+## Flags
+
+| Flag | Description |
+|---|---|
+| `-f`, `--file <path>` | Read IOCs from a file (one per line, blank lines and `#` comments are ignored). |
+| `-F`, `--format <fmt>` | Output format: `table` (default), `json`, `jsonl`, `csv`, `markdown`, or a hunt-query format (`splunk-spl`, `kql-sentinel`, `kql-defender`, `crowdstrike-fql`, `elastic-eql`, `elastic-lucene`, `suricata-ip-rules`). |
+| `--json` | Deprecated alias for `--format json`. |
+| `--no-cache` | Bypass the SQLite cache for this run and re-query every provider live. |
+| `--debug` | Verbose stderr logging (HTTP traffic, provider errors) without leaking API keys. |
+| `--narrow` | Force the compact table layout, even on wide terminals. |
+| `--wide` | Force the wide table layout, even when the terminal is narrower than 100 columns. |
+| `--ascii` | Use ASCII glyphs (`[!]`, `[~]`, `[ ]`) instead of Unicode for compatibility with old terminals. |
+| `--theme <name>` | Pick a color theme: `solarized-dark` (default), `forensic`, `mocha`, `latte`. Env: `IOCSCAN_THEME`. |
+| `--list-themes` | Render a one-line preview of every available theme, then exit. |
+| `--defang` | Render IOCs in defanged form (`1.2.3[.]4`, `evil[.]com`) so output is safe to paste anywhere. |
+| `--cell-links` | Emit OSC 8 hyperlinks on provider cells so modern terminals make them clickable. |
+| `-q`, `--quiet` | Suppress table and footer; emit one TSV line per IOC (`IOC\tverdict\tcoverage`) for scripting. |
+| `--links-only` | Emit `IOC\tprovider\tpermalink` TSV (only rows where a permalink exists); suppresses normal output. |
+| `--sort <key>` | Output order: `input` (default), `verdict` (worst-first), `coverage` (most-evidence-first). |
+| `--include <paths>` | JSON only: comma-separated dot-paths to keep (e.g. `results.*.ioc,results.*.verdict`). |
+| `--exclude <paths>` | JSON only: comma-separated dot-paths to drop (applied after `--include`). |
+| `--<provider>-key <key>` | Pass a provider key on the CLI (`--vt-key`, `--abuseipdb-key`, `--otx-key`, `--greynoise-key`, `--abusech-key`, `--urlscan-key`). Insecure — visible via `ps`; prefer env vars or `config set`. |
 
 ---
 
@@ -87,7 +131,7 @@ Example scan of a mixed batch of IPs and domains (default `solarized-dark` theme
 
 ![iocscan example output](test_output.png)
 
-iocscan renders a **wide** table when the terminal is at least 100 columns and a **compact** table when it isn't. Use `--narrow` to force compact or `--wide` to force wide. Add `--no-color` to disable ANSI colors, `--ascii` to swap Unicode glyphs for `[!]`/`[~]`/`[ ]`/etc. fallbacks (also honors the standard `NO_COLOR` / `FORCE_COLOR` env vars).
+iocscan renders a **wide** table when the terminal is at least 100 columns and a **compact** table when it isn't. Use `--narrow` to force compact or `--wide` to force wide. Pass `--ascii` to swap Unicode glyphs for `[!]`/`[~]`/`[ ]`/etc. fallbacks. The standard `NO_COLOR` and `FORCE_COLOR` env vars are honored to disable or force ANSI colors.
 
 ### Themes
 
@@ -106,41 +150,20 @@ Pick one with `--theme <name>` or set the `IOCSCAN_THEME` env var. Preview every
 python -m iocscan --list-themes
 ```
 
-### Verdict glyphs
+### Cell semantics
 
-Every verdict is shown along three channels — **color + glyph + word** — so meaning survives if any one channel drops (NO_COLOR, screen reader, narrow terminal).
-
-| Glyph | Verdict | Color |
-|---|---|---|
-| `●` | malicious | bold red |
-| `◐` | suspicious | yellow |
-| `○` | clean | green |
-| `·` | unknown | dim gray |
-| `✗` | error | italic red |
-| `⚑` | whitelisted (suffix on the verdict cell) | dim |
-
-ASCII fallback: `[!]` `[~]` `[ ]` `[.]` `[x]` `[WL]`.
-
-### Cell semantics (per-provider)
+Each provider column reports one cell per IOC. The cell tells you what the provider saw, not what the final verdict is — coverage and weighting are applied later by the aggregator.
 
 | Cell | Meaning |
 |---|---|
-| `—` | Provider ran, no hit / score 0 → clean (e.g. blocklist miss, `0 pulses`) |
-| `·` | Provider does not apply to this IOC type (e.g. IP-only feed against a domain) |
-| `0/92`, `50 pulses`, `tor exit`, `15%` | Numeric or label score from the provider |
-| `✗ <msg>` | Hard failure: network error, 5xx, parse error |
-| `▲ 429 rate limit` | Rate limited — retryable |
-| `⚡ auth failed` | Authentication failed — fixable by setting the right API key |
+| `— (no hit - clean)` | Provider ran successfully and found nothing on this IOC. Counts as a clean vote toward the verdict. |
+| `·` | Provider does not apply to this IOC type (e.g. an IP-only feed against a domain). Excluded from coverage. |
+| `0/92`, `50 pulses`, `tor exit`, `15%` | Numeric or labelled score returned by the provider. Interpretation is provider-specific. |
+| `✗ <msg>` | Hard failure: network error, 5xx response, or a parse error. Does not count toward coverage. |
+| `▲ 429 rate limit` | Provider rate-limited the request. Retryable; does not count toward coverage. |
+| `⚡ auth failed` | The API key is missing, wrong, or expired. Fix with `config set` or the matching env var. |
 
-Errors do **not** count toward coverage.
-
-### Final verdict cell
-
-The `Verdict` column reads e.g. `● clean (9/9)` — glyph + value + how many providers actually responded out of how many were applicable. A trailing `⚑ whitelisted` tag means the IOC matched the bundled or Tranco whitelist and any `malicious` / `suspicious` verdict was clamped down to `clean`.
-
-### Summary footer
-
-After the table, a multi-line summary block shows totals, verdict counts, provider errors, cache hits/fresh fetches, and the exit code. Suppressed under `--json` and when output is piped.
+A `— (no hit - clean)` cell is the only "clean" signal a provider can emit — there is no green check. Errors and rate limits are deliberately separated from "unknown" so coverage reflects only what providers actually answered.
 
 ### Output modes
 
@@ -158,33 +181,34 @@ After the table, a multi-line summary block shows totals, verdict counts, provid
 
 JSON is the only format that carries the full per-provider breakdown — `jsonl`, `csv`, and `markdown` are flat summary exports (IOC, type, verdict, coverage, whitelisted).
 
-### Sorting
-
-`--sort {input,verdict,coverage}` (default `input`):
-
-- **`input`** — preserve the order IOCs were passed in (default; safe for scripts).
-- **`verdict`** — worst first (malicious → suspicious → unknown → clean).
-- **`coverage`** — most evidence first (highest `responding/total`).
-
-JSON output stays in input order **unless** `--sort` is explicit — machines should not be silently reordered.
-
 ---
 
 ## Providers
 
-| Provider | Key required | IOC types |
-|---|---|---|
-| URLhaus | yes (free, single key for all abuse.ch) | IP, domain |
-| ThreatFox | yes (free, single key for all abuse.ch) | IP, domain |
-| Feodo Tracker | no | IP |
-| Tor Exit List | no | IP |
-| Spamhaus DROP | no | IP |
-| VirusTotal | yes (free 500/day) | IP, domain |
-| AbuseIPDB | yes (free 1000/day) | IP |
-| AlienVault OTX | yes (free ~10k/h) | IP, domain |
-| GreyNoise Community | no (optional key for higher rate limit) | IP |
+iocscan ships with 16 providers. **Verdict** providers contribute a vote to the final verdict; **enrichment** providers add context (ASN, certificates, ports, whois age) without influencing the score.
 
-> abuse.ch (URLhaus + ThreatFox) requires an Auth-Key on their query APIs. Registration is free at <https://auth.abuse.ch> — the same single key covers both.
+| Provider | Role | Key | IOC types | Official site |
+|---|---|---|---|---|
+| URLhaus | Verdict | Auth-Key (free) | IP, domain, URL | <https://urlhaus.abuse.ch> |
+| ThreatFox | Verdict | Auth-Key (free) | IP, domain, URL, hash | <https://threatfox.abuse.ch> |
+| MalwareBazaar | Verdict | Auth-Key (free) | hash | <https://bazaar.abuse.ch> |
+| YARAify | Verdict | Auth-Key (free) | hash | <https://yaraify.abuse.ch> |
+| Feodo Tracker | Verdict (authoritative) | none | IP | <https://feodotracker.abuse.ch> |
+| Spamhaus DROP | Verdict (authoritative) | none | IP | <https://www.spamhaus.org/drop/> |
+| Tor Exit List | Verdict | none | IP | <https://check.torproject.org/exit-addresses> |
+| VirusTotal | Verdict (weight ×2) | free 500/day | IP, domain, URL, hash | <https://www.virustotal.com> |
+| AbuseIPDB | Verdict | free 1000/day | IP | <https://www.abuseipdb.com> |
+| AlienVault OTX | Verdict (weight ×2) | free | IP, domain, URL, hash | <https://otx.alienvault.com> |
+| GreyNoise Community | Verdict | optional (raises rate limit) | IP | <https://www.greynoise.io> |
+| urlscan.io | Verdict | optional | URL | <https://urlscan.io> |
+| Shodan InternetDB | Enrichment | none | IP | <https://internetdb.shodan.io> |
+| Team Cymru ASN | Enrichment | none | IP | <https://team-cymru.com/community-services/ip-asn-mapping/> |
+| WHOIS Age | Enrichment | none | IP, domain | <https://www.iana.org/whois> |
+| crt.sh | Enrichment | none | domain | <https://crt.sh> |
+
+> abuse.ch endpoints (URLhaus, ThreatFox, MalwareBazaar, YARAify) require an Auth-Key on their query APIs. Registration is free at <https://auth.abuse.ch> — the same single key covers all four.
+
+> "Authoritative" means a single `malicious` hit from that provider is enough to mark the IOC `malicious` regardless of what the others say. See [Verdict logic](#verdict-logic-in-short).
 
 ---
 
@@ -195,11 +219,12 @@ Three ways to provide keys (lowest → highest priority): config file → enviro
 **Recommended — config file** (stored at `~/.iocscan/config.toml`, mode 0600):
 
 ```bash
-python -m iocscan config set abusech    YOUR_KEY  # single key for URLhaus + ThreatFox
+python -m iocscan config set abusech    YOUR_KEY  # single key for all abuse.ch endpoints
 python -m iocscan config set virustotal YOUR_KEY
 python -m iocscan config set abuseipdb  YOUR_KEY
 python -m iocscan config set otx        YOUR_KEY
 python -m iocscan config set greynoise  YOUR_KEY  # optional; raises anonymous rate limit
+python -m iocscan config set urlscan    YOUR_KEY  # optional
 ```
 
 **Environment variables** (useful in CI):
@@ -210,6 +235,7 @@ export IOCSCAN_VT_KEY=...
 export IOCSCAN_ABUSEIPDB_KEY=...
 export IOCSCAN_OTX_KEY=...
 export IOCSCAN_GREYNOISE_KEY=...   # optional
+export IOCSCAN_URLSCAN_KEY=...     # optional
 ```
 
 **CLI flags** (insecure — visible to other local users via `ps`; prefer env or config):
@@ -318,28 +344,6 @@ echo "login-secure[.]bank-update[.]top" | python -m iocscan
 
 ---
 
-## Project layout
-
-High-level map of the codebase. Each row links a directory to its single responsibility.
-
-| Path | Responsibility |
-|---|---|
-| `iocscan/cli.py` | Argparse entry point + subcommand routing (`scan`, `config`, `cache`, `providers`, `whitelist`); `-f` input safety; output dispatch. |
-| `iocscan/core/scan.py` | Per-IOC orchestration: filters providers by IOC type, rate-limits, `asyncio.gather`s their lookups, returns `ScanResult`. |
-| `iocscan/core/verdict.py` | Aggregates per-provider results into the final verdict (authoritative override → weighted vote → coverage floor). |
-| `iocscan/core/ioc.py` | Parses & validates IOCs; understands defanged forms (`evil[.]com`, `hxxps://...`). |
-| `iocscan/core/config.py` | API key resolution: config file (0600) → env var → CLI flag. |
-| `iocscan/core/cache.py` | SQLite cache at `~/.iocscan/cache.db` (24h TTL, symlink-refusal guard). |
-| `iocscan/core/whitelist.py` + `core/tranco.py` | Bundled critical-infra list + optional Tranco top-1K override. |
-| `iocscan/providers/base.py` | `Provider` ABC, `ProviderResult` dataclass, shared `Verdict`/`IOCType` enums. |
-| `iocscan/providers/<name>.py` | One file per TI source (9 total). Each subclasses `Provider`. |
-| `iocscan/providers/__init__.py` | `ALL_PROVIDERS` registry — the single list `scan.py` iterates. |
-| `iocscan/ui/table.py`, `ui/footer.py`, `ui/json_out.py`, `ui/export.py` | Output renderers: rich table, summary footer, JSON, jsonl/csv/markdown. |
-| `iocscan/ui/themes.py`, `ui/glyph.py`, `ui/console.py` | Theming, verdict glyphs, terminal detection. |
-| `tests/` | pytest suite mirroring the source tree (`unit/`, `providers/`, `cli/`, `integration/`). |
-
----
-
 ## Cache
 
 Results are cached at `~/.iocscan/cache.db` for 24 hours.
@@ -364,16 +368,6 @@ python -m iocscan whitelist stats    # cache age, domain count
 ```
 
 The cache lives at `~/.iocscan/tranco-1k.txt`. Re-run `update` weekly to keep it fresh.
-
----
-
-## Troubleshooting
-
-- **`config error: ...`** — `~/.iocscan/config.toml` is malformed. `python -m iocscan config path` shows the location; edit or delete.
-- **All results say `auth failed`** — your API key is wrong or expired. Verify with `python -m iocscan config show`.
-- **All results say `429 rate limit`** — you're hitting free-tier limits. Wait, or add a key for higher-tier providers (GreyNoise especially).
-- **Exit code 5 (all unknown)** — fewer than 3 providers responded. Add more API keys; see `python -m iocscan providers`.
-- **Verbose troubleshooting** — `python -m iocscan --debug ...` logs each provider call to stderr (no API keys are logged).
 
 ---
 
