@@ -6,16 +6,27 @@
 #
 # Each destructive step asks for confirmation before running.
 #
-# Usage:
-#   .\uninstall.ps1
+# Usage (from the project root):
+#   .\uninstall\uninstall.ps1
 #
 # If PowerShell blocks script execution, allow it for the current session:
 #   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 $ErrorActionPreference = "Stop"
 
-$ProjectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+# Script lives in <project>\uninstall\, so the project root is one level up.
+# Resolve-Path follows symlinks so a misplaced symlink can't redirect us.
+$ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectDir = (Resolve-Path (Split-Path -Parent $ScriptDir)).Path
 $UserData   = Join-Path $env:USERPROFILE ".iocscan"
+
+# Refuse to run if $ProjectDir does not look like the iocscan repo — guards
+# against accidental relocation or a misconfigured symlink target.
+if (-not (Test-Path (Join-Path $ProjectDir "pyproject.toml"))) {
+    Write-Host "error: $ProjectDir does not look like the iocscan project root" -ForegroundColor Red
+    Write-Host "       (missing pyproject.toml). Refusing to proceed." -ForegroundColor Red
+    exit 1
+}
 
 function Confirm-Action {
     param([string]$Prompt)
