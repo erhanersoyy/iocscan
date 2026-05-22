@@ -48,13 +48,15 @@ def whitelist_glyph(*, ascii_only: bool = False) -> str:
 # score, or failed in a specific way. The compact / narrow table uses the
 # same labels through its "Details" column.
 
-CELL_NO_RECORD       = "—"     # provider ran, no hit / score 0
+CELL_NO_RECORD       = "—"     # provider ran, no hit / score 0 — votes CLEAN
+CELL_UNKNOWN         = "?"     # provider responded but verdict is inconclusive
 CELL_NA              = "·"     # provider doesn't apply to this IOC type
 CELL_HARD_ERROR      = "✗"     # generic failure (network, parse, 5xx)
 CELL_RATE_LIMITED    = "▲"     # 429 — retryable
 CELL_AUTH_FAIL       = "⚡"     # 401/403 — fixable by user
 
 CELL_NO_RECORD_ASCII    = "-"
+CELL_UNKNOWN_ASCII      = "?"
 CELL_NA_ASCII           = "."
 CELL_HARD_ERROR_ASCII   = "x"
 CELL_RATE_LIMITED_ASCII = "!"

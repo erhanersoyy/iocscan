@@ -13,6 +13,8 @@ Many providers work out of the box (no API key). The rest activate when you add 
 
 Requires Python 3.11 or newer.
 
+**Linux / macOS:**
+
 ```bash
 git clone https://github.com/erhanersoyy/iocscan.git
 cd iocscan
@@ -21,7 +23,19 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-That's it. Every command below assumes the venv is active. Re-activate any new terminal with `source .venv/bin/activate`.
+**Windows (PowerShell):**
+
+```powershell
+git clone https://github.com/erhanersoyy/iocscan.git
+cd iocscan
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+> On Windows, POSIX file permissions (`0600`) cannot be enforced on `config.toml`. The file is still protected by NTFS ACLs on your user account, but on multi-user machines treat this as weaker than the Unix guarantee. iocscan prints a one-line warning when this applies.
+
+That's it. Every command below assumes the venv is active. Re-activate any new terminal with `source .venv/bin/activate` (or `.venv\Scripts\Activate.ps1` on Windows).
 
 ---
 
@@ -157,6 +171,7 @@ Each provider column reports one cell per IOC. The cell tells you what the provi
 | Cell | Meaning |
 |---|---|
 | `— (no hit - clean)` | Provider ran successfully and found nothing on this IOC. Counts as a clean vote toward the verdict. |
+| `?` | Provider responded but the result is inconclusive (ambiguous score, insufficient data). Does not count toward coverage. |
 | `·` | Provider does not apply to this IOC type (e.g. an IP-only feed against a domain). Excluded from coverage. |
 | `0/92`, `50 pulses`, `tor exit`, `15%` | Numeric or labelled score returned by the provider. Interpretation is provider-specific. |
 | `✗ <msg>` | Hard failure: network error, 5xx response, or a parse error. Does not count toward coverage. |
@@ -373,10 +388,14 @@ The cache lives at `~/.iocscan/tranco-1k.txt`. Re-run `update` weekly to keep it
 
 ## Uninstall
 
-iocscan does not install anything system-wide. Removing the project comes down to deleting the three things it creates. A guided script is included:
+iocscan does not install anything system-wide. Removing the project comes down to deleting the three things it creates. A guided script is included for each platform:
 
 ```bash
-./uninstall.sh
+./uninstall.sh           # Linux / macOS
+```
+
+```powershell
+.\uninstall.ps1          # Windows (PowerShell)
 ```
 
 The script walks through four steps, asking for confirmation before each:
