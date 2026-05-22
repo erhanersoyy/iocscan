@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +19,10 @@ ENV_VARS = {
     "greynoise":  "IOCSCAN_GREYNOISE_KEY",
     "urlscan":    "IOCSCAN_URLSCAN_KEY",
 }
+
+# Emit the Windows POSIX-mode warning at most once per process — set_key can
+# be called repeatedly (e.g. scripted `iocscan config set ...` chains).
+_WINDOWS_POSIX_WARNING_SHOWN = False
 
 
 @dataclass
@@ -53,6 +58,16 @@ class Config:
         os.chmod(tmp, 0o600)
         tmp.replace(target)
         os.chmod(target, 0o600)
+        # os.chmod with POSIX modes is a no-op on Windows beyond the read-only
+        # bit; surface this so the user knows the file relies on NTFS ACLs.
+        global _WINDOWS_POSIX_WARNING_SHOWN
+        if sys.platform == "win32" and not _WINDOWS_POSIX_WARNING_SHOWN:
+            print(
+                f"warning: POSIX mode 0600 is not enforced on Windows; "
+                f"{target} is protected only by NTFS ACLs on your user account.",
+                file=sys.stderr,
+            )
+            _WINDOWS_POSIX_WARNING_SHOWN = True
         self.path = target
 
 
@@ -86,7 +101,6 @@ def load_config(cli_keys: dict[str, str] | None = None) -> Config:
             settings = dict(settings)
             settings["cache_ttl_hours"] = int(ttl_env)
         except ValueError:
-            import sys
             print(
                 f"warning: IOCSCAN_CACHE_TTL='{ttl_env}' is not an integer; ignoring",
                 file=sys.stderr,
