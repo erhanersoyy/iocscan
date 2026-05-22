@@ -13,6 +13,8 @@ from iocscan.ui.glyph import (
     CELL_NA_ASCII,
     CELL_NO_RECORD,
     CELL_NO_RECORD_ASCII,
+    CELL_UNKNOWN,
+    CELL_UNKNOWN_ASCII,
     classify_error,
     classify_error_ascii,
     verdict_glyph,
@@ -140,14 +142,18 @@ def _format_provider_cell(result, *, ascii_only: bool, permalink: str | None = N
         if result.details:
             body = ""
         else:
-            cell_no = CELL_NO_RECORD_ASCII if ascii_only else CELL_NO_RECORD
             style = VERDICT_STYLES[result.verdict]
             if result.verdict == Verdict.CLEAN:
-                # README documents this cell as '— (no hit - clean)'. Only
-                # applies when the provider voted CLEAN; UNKNOWN scoreless
-                # rows stay as the bare em-dash so coverage math reads cleanly.
+                # README documents this cell as '— (no hit - clean)'.
+                cell_no = CELL_NO_RECORD_ASCII if ascii_only else CELL_NO_RECORD
                 body = f"[{style}]{cell_no}[/] [muted](no hit - clean)[/]"
+            elif result.verdict == Verdict.UNKNOWN:
+                # Provider responded but verdict is inconclusive — does not
+                # count toward coverage.
+                cell_unk = CELL_UNKNOWN_ASCII if ascii_only else CELL_UNKNOWN
+                body = f"[{style}]{cell_unk}[/]"
             else:
+                cell_no = CELL_NO_RECORD_ASCII if ascii_only else CELL_NO_RECORD
                 body = f"[{style}]{cell_no}[/]"
     else:
         body = f"[{VERDICT_STYLES[result.verdict]}]{_escape(result.score)}[/]"
@@ -215,6 +221,7 @@ def _render_compact(
 
     cell_na = CELL_NA_ASCII if ascii_only else CELL_NA
     cell_no = CELL_NO_RECORD_ASCII if ascii_only else CELL_NO_RECORD
+    cell_unk = CELL_UNKNOWN_ASCII if ascii_only else CELL_UNKNOWN
     provider_by_name = {p.name: p for p in (providers or [])}
 
     for s in scans:
@@ -233,7 +240,12 @@ def _render_compact(
                 line = f"[verdict.error]{label}: {glyph} {err}[/]"
             else:
                 style = VERDICT_STYLES[r.verdict]
-                score = _escape(r.score) if r.score and r.score != "—" else cell_no
+                if r.score and r.score != "—":
+                    score = _escape(r.score)
+                elif r.verdict == Verdict.UNKNOWN:
+                    score = cell_unk
+                else:
+                    score = cell_no
                 line = f"[{style}]{label}: {score}[/]"
             p = provider_by_name.get(name)
             link = p.permalink(s.ioc, s.ioc_type) if p else None
