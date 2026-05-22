@@ -9,8 +9,19 @@
 
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Script lives in <project>/uninstall/, so the project root is one level up.
+# pwd -P resolves symlinks (defence-in-depth: a symlinked uninstall/ would
+# otherwise let cd .. land outside the real project tree).
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 USER_DATA="$HOME/.iocscan"
+
+# Refuse to run if PROJECT_DIR doesn't look like the iocscan repo — guards
+# against accidental relocation or a misconfigured symlink target.
+if [[ ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
+  echo "error: $PROJECT_DIR does not look like the iocscan project root" >&2
+  echo "       (missing pyproject.toml). Refusing to proceed." >&2
+  exit 1
+fi
 
 confirm() {
   local prompt="$1"

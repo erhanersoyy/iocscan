@@ -391,11 +391,11 @@ The cache lives at `~/.iocscan/tranco-1k.txt`. Re-run `update` weekly to keep it
 iocscan does not install anything system-wide. Removing the project comes down to deleting the three things it creates. A guided script is included for each platform:
 
 ```bash
-./uninstall.sh           # Linux / macOS
+./uninstall/uninstall.sh           # Linux / macOS
 ```
 
 ```powershell
-.\uninstall.ps1          # Windows (PowerShell)
+.\uninstall\uninstall.ps1          # Windows (PowerShell)
 ```
 
 The script walks through four steps, asking for confirmation before each:
