@@ -15,7 +15,7 @@ def test_every_theme_uses_grey70_for_table_border():
 
 
 def test_border_style_returns_grey70_with_default_theme():
-    console = make_console(no_color=False)
+    console = make_console()
     assert "grey70" in _border_style(console)
 
 

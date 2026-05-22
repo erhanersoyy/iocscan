@@ -17,21 +17,17 @@ def test_make_console_returns_a_console():
     assert hasattr(c, "print")
 
 
-def test_no_color_flag_disables_color():
-    c = make_console(no_color=True)
-    assert c.no_color is True
-
-
 def test_no_color_env_disables_color(monkeypatch):
     monkeypatch.setenv("NO_COLOR", "1")
     c = make_console()
     assert c.no_color is True
 
 
-def test_no_color_flag_takes_precedence_over_force_color(monkeypatch):
-    """--no-color must win even if FORCE_COLOR is set in the environment."""
+def test_no_color_env_wins_over_force_color(monkeypatch):
+    """NO_COLOR must win even if FORCE_COLOR is also set."""
     monkeypatch.setenv("FORCE_COLOR", "1")
-    c = make_console(no_color=True)
+    monkeypatch.setenv("NO_COLOR", "1")
+    c = make_console()
     assert c.no_color is True
 
 
