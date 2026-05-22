@@ -6,14 +6,14 @@ import time
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
+from iocscan.providers.base import HASH_TYPES, IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
 BASE = "https://www.virustotal.com/api/v3"
 
 
 class VirusTotal(Provider):
     name = "virustotal"
-    supports = {IOCType.IP, IOCType.DOMAIN, IOCType.URL, IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256}
+    supports = {IOCType.IP, IOCType.DOMAIN, IOCType.URL, *HASH_TYPES}
     requires_key = True
     max_rps = 0.06       # 4 req/min free tier
     max_per_day = 500

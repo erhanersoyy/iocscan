@@ -20,6 +20,9 @@ class IOCType(str, Enum):
     HASH_SHA256 = "hash_sha256"
 
 
+HASH_TYPES: tuple[IOCType, ...] = (IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256)
+
+
 class Verdict(str, Enum):
     MALICIOUS = "malicious"
     SUSPICIOUS = "suspicious"
