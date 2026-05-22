@@ -31,7 +31,7 @@ echo
 # Step 1 — user data (~/.iocscan/): API keys, TI cache, Tranco whitelist
 # -----------------------------------------------------------------------------
 if [[ -d "$USER_DATA" ]]; then
-  echo "[1/4] User data at $USER_DATA"
+  echo "[1/3] User data at $USER_DATA"
   echo "      Contains: config.toml (API keys), cache.db (TI lookups),"
   echo "                tranco-1k.txt (whitelist cache)."
 
@@ -48,7 +48,7 @@ if [[ -d "$USER_DATA" ]]; then
     echo "      skipped."
   fi
 else
-  echo "[1/4] $USER_DATA does not exist — skipped."
+  echo "[1/3] $USER_DATA does not exist — skipped."
 fi
 echo
 
@@ -57,7 +57,7 @@ echo
 # -----------------------------------------------------------------------------
 VENV="$PROJECT_DIR/.venv"
 if [[ -d "$VENV" ]]; then
-  echo "[2/4] Project venv at $VENV"
+  echo "[2/3] Project venv at $VENV"
   echo "      Contains httpx, rich, tomli-w (and pytest/coverage if dev extras"
   echo "      were installed). Only this venv is affected — system Python and"
   echo "      other projects' venvs are untouched."
@@ -68,14 +68,14 @@ if [[ -d "$VENV" ]]; then
     echo "      skipped."
   fi
 else
-  echo "[2/4] $VENV does not exist — skipped."
+  echo "[2/3] $VENV does not exist — skipped."
 fi
 echo
 
 # -----------------------------------------------------------------------------
 # Step 3 — project source tree
 # -----------------------------------------------------------------------------
-echo "[3/4] Project source tree at $PROJECT_DIR"
+echo "[3/3] Project source tree at $PROJECT_DIR"
 echo "      This removes: source code, tests, docs, and the local .git/"
 echo "      history. Any uncommitted local changes will be lost."
 echo "      Note: the script will delete itself during this step."
@@ -89,18 +89,6 @@ if confirm "Remove $PROJECT_DIR?"; then
 else
   echo "      skipped."
 fi
-echo
-
-# -----------------------------------------------------------------------------
-# Step 4 — GitHub remote (manual, irreversible)
-# -----------------------------------------------------------------------------
-echo "[4/4] GitHub remote repository — manual, not automated."
-echo
-echo "      This script does NOT delete the GitHub repo. Deleting a GitHub"
-echo "      repo is irreversible and there is rarely a good reason. If you"
-echo "      really want to remove it, run manually:"
-echo
-echo "          gh repo delete erhanersoyy/iocscan --yes"
 echo
 
 echo "==> done."

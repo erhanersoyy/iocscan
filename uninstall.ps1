@@ -35,7 +35,7 @@ Write-Host ""
 # Step 1 — user data (~\.iocscan\): API keys, TI cache, Tranco whitelist
 # -----------------------------------------------------------------------------
 if (Test-Path $UserData) {
-    Write-Host "[1/4] User data at $UserData"
+    Write-Host "[1/3] User data at $UserData"
     Write-Host "      Contains: config.toml (API keys), cache.db (TI lookups),"
     Write-Host "                tranco-1k.txt (whitelist cache)."
 
@@ -53,7 +53,7 @@ if (Test-Path $UserData) {
         Write-Host "      skipped."
     }
 } else {
-    Write-Host "[1/4] $UserData does not exist - skipped."
+    Write-Host "[1/3] $UserData does not exist - skipped."
 }
 Write-Host ""
 
@@ -62,7 +62,7 @@ Write-Host ""
 # -----------------------------------------------------------------------------
 $Venv = Join-Path $ProjectDir ".venv"
 if (Test-Path $Venv) {
-    Write-Host "[2/4] Project venv at $Venv"
+    Write-Host "[2/3] Project venv at $Venv"
     Write-Host "      Contains httpx, rich, tomli-w (and pytest/coverage if dev extras"
     Write-Host "      were installed). Only this venv is affected - system Python and"
     Write-Host "      other projects' venvs are untouched."
@@ -73,14 +73,14 @@ if (Test-Path $Venv) {
         Write-Host "      skipped."
     }
 } else {
-    Write-Host "[2/4] $Venv does not exist - skipped."
+    Write-Host "[2/3] $Venv does not exist - skipped."
 }
 Write-Host ""
 
 # -----------------------------------------------------------------------------
 # Step 3 — project source tree
 # -----------------------------------------------------------------------------
-Write-Host "[3/4] Project source tree at $ProjectDir"
+Write-Host "[3/3] Project source tree at $ProjectDir"
 Write-Host "      This removes: source code, tests, docs, and the local .git\"
 Write-Host "      history. Any uncommitted local changes will be lost."
 Write-Host "      Note: the script will delete itself during this step."
@@ -94,18 +94,6 @@ if (Confirm-Action "Remove $ProjectDir?") {
 } else {
     Write-Host "      skipped."
 }
-Write-Host ""
-
-# -----------------------------------------------------------------------------
-# Step 4 — GitHub remote (manual, irreversible)
-# -----------------------------------------------------------------------------
-Write-Host "[4/4] GitHub remote repository - manual, not automated."
-Write-Host ""
-Write-Host "      This script does NOT delete the GitHub repo. Deleting a GitHub"
-Write-Host "      repo is irreversible and there is rarely a good reason. If you"
-Write-Host "      really want to remove it, run manually:"
-Write-Host ""
-Write-Host "          gh repo delete erhanersoyy/iocscan --yes"
 Write-Host ""
 
 Write-Host "==> done."
