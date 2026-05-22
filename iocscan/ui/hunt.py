@@ -7,37 +7,14 @@ IOC → query translator. Empty input yields a single no-op comment.
 from __future__ import annotations
 
 from iocscan.core.scan import ScanResult
-from iocscan.providers.base import IOCType
-
-
-HUNT_FORMATS = (
-    "splunk-spl",
-    "kql-sentinel",
-    "kql-defender",
-    "crowdstrike-fql",
-    "elastic-eql",
-    "elastic-lucene",
-    "suricata-ip-rules",
-)
+from iocscan.providers.base import HASH_TYPES, IOCType
 
 
 def render_hunt(scans: list[ScanResult], fmt: str) -> str:
-    by_type = _partition(scans)
-    if fmt == "splunk-spl":
-        return _splunk_spl(by_type)
-    if fmt == "kql-sentinel":
-        return _kql_sentinel(by_type)
-    if fmt == "kql-defender":
-        return _kql_defender(by_type)
-    if fmt == "crowdstrike-fql":
-        return _crowdstrike_fql(by_type)
-    if fmt == "elastic-eql":
-        return _elastic_eql(by_type)
-    if fmt == "elastic-lucene":
-        return _elastic_lucene(by_type)
-    if fmt == "suricata-ip-rules":
-        return _suricata(by_type)
-    raise ValueError(f"unknown hunt format: {fmt!r}")
+    emitter = _EMITTERS.get(fmt)
+    if emitter is None:
+        raise ValueError(f"unknown hunt format: {fmt!r}")
+    return emitter(_partition(scans))
 
 
 def _partition(scans: list[ScanResult]) -> dict[IOCType, list[str]]:
@@ -51,13 +28,13 @@ def _has_any(by_type: dict[IOCType, list[str]]) -> bool:
     return any(by_type.values())
 
 
-# Quote helpers — defense-in-depth against SIEM-query injection.
-# The IP / DOMAIN / HASH parsers reject characters that would break
-# downstream syntax, but URL IOCs go through `urlparse` which is more
-# permissive. _detect_url in core/ioc.py now refuses URLs carrying
-# unencoded quotes / whitespace / control chars, but we still escape
-# at emission so a regression upstream cannot smuggle clauses into
-# the analyst's SIEM.
+def _all_hashes(by: dict[IOCType, list[str]]) -> list[str]:
+    return [h for t in HASH_TYPES for h in by.get(t, [])]
+
+
+# Escape backslashes *before* quotes so a crafted `\"` doesn't survive as
+# `\"` (a valid escape + new quote). _detect_url in core/ioc.py already
+# rejects unencoded quotes in URL IOCs; we escape here as defense in depth.
 _BS = "\\"
 _DQ = '"'
 _SQ = "'"
@@ -92,9 +69,7 @@ def _splunk_spl(by: dict[IOCType, list[str]]) -> str:
     ips = by.get(IOCType.IP, [])
     domains = by.get(IOCType.DOMAIN, [])
     urls = by.get(IOCType.URL, [])
-    hashes: list[str] = []
-    for t in (IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256):
-        hashes.extend(by.get(t, []))
+    hashes = _all_hashes(by)
 
     blocks: list[str] = [
         "``` iocscan hunt — earliest=-90d, summariesonly=false ```",
@@ -143,13 +118,13 @@ def _splunk_spl(by: dict[IOCType, list[str]]) -> str:
     return "\n\n".join(blocks)
 
 
-def _tstats_block(datamodel: str, dataset: str, where: str, by: list[str]) -> str:
+def _tstats_block(datamodel: str, dataset: str, where: str, by_fields: list[str]) -> str:
     return (
         f"| tstats summariesonly=false count "
         f"min(_time) as firstTime max(_time) as lastTime "
         f"from datamodel={datamodel}.{dataset} "
         f"where earliest=-90d {where} "
-        f"by {' '.join(by)} "
+        f"by {' '.join(by_fields)} "
         f'| `drop_dm_object_name("{dataset}")` '
         f"| convert ctime(firstTime) ctime(lastTime)"
     )
@@ -168,9 +143,7 @@ def _kql_sentinel(by: dict[IOCType, list[str]]) -> str:
     urls = by.get(IOCType.URL, [])
     if urls:
         parts.append(f"DeviceNetworkEvents | where RemoteUrl in~ ({_q_dq(urls)})")
-    hashes: list[str] = []
-    for t in (IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256):
-        hashes.extend(by.get(t, []))
+    hashes = _all_hashes(by)
     if hashes:
         h = _q_dq(hashes)
         parts.append(
@@ -237,16 +210,17 @@ def _elastic_eql(by: dict[IOCType, list[str]]) -> str:
 def _elastic_lucene(by: dict[IOCType, list[str]]) -> str:
     if not _has_any(by):
         return "// no IOCs to hunt"
+
+    def _or_quoted(values: list[str]) -> str:
+        return " OR ".join(f'"{_esc_dq(v)}"' for v in values)
+
     clauses: list[str] = []
     if by.get(IOCType.IP):
-        ips_or = " OR ".join(f'"{v}"' for v in by[IOCType.IP])
-        clauses.append(f"destination.ip:({ips_or})")
+        clauses.append(f"destination.ip:({_or_quoted(by[IOCType.IP])})")
     if by.get(IOCType.DOMAIN):
-        doms_or = " OR ".join(f'"{v}"' for v in by[IOCType.DOMAIN])
-        clauses.append(f"dns.question.name:({doms_or})")
+        clauses.append(f"dns.question.name:({_or_quoted(by[IOCType.DOMAIN])})")
     if by.get(IOCType.URL):
-        urls_or = " OR ".join(f'"{v}"' for v in by[IOCType.URL])
-        clauses.append(f"url.full:({urls_or})")
+        clauses.append(f"url.full:({_or_quoted(by[IOCType.URL])})")
     return " OR ".join(clauses) or "// no IOCs to hunt"
 
 
@@ -255,10 +229,21 @@ def _suricata(by: dict[IOCType, list[str]]) -> str:
     ips = by.get(IOCType.IP, [])
     if not ips:
         return "# suricata-ip-rules: no IPs to hunt"
-    rules: list[str] = []
-    for i, ip in enumerate(ips, start=9000000):
-        rules.append(
-            f'alert ip $HOME_NET any -> {ip} any '
-            f'(msg:"iocscan: malicious IP {ip}"; sid:{i}; rev:1;)'
-        )
-    return "\n".join(rules)
+    return "\n".join(
+        f'alert ip $HOME_NET any -> {ip} any '
+        f'(msg:"iocscan: malicious IP {ip}"; sid:{sid}; rev:1;)'
+        for sid, ip in enumerate(ips, start=9000000)
+    )
+
+
+_EMITTERS = {
+    "splunk-spl": _splunk_spl,
+    "kql-sentinel": _kql_sentinel,
+    "kql-defender": _kql_defender,
+    "crowdstrike-fql": _crowdstrike_fql,
+    "elastic-eql": _elastic_eql,
+    "elastic-lucene": _elastic_lucene,
+    "suricata-ip-rules": _suricata,
+}
+
+HUNT_FORMATS = tuple(_EMITTERS)

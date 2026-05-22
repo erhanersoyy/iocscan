@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from iocscan.providers.base import IOCType, Verdict
 from iocscan.core.scan import ScanResult
 from iocscan.ui.hunt import HUNT_FORMATS, render_hunt
@@ -38,10 +40,22 @@ def test_whitelisted_iocs_pass_through():
     assert "evil.com" in out
 
 
+_EMPTY_MARKERS = {
+    "splunk-spl": "```",
+    "kql-sentinel": "//",
+    "kql-defender": "//",
+    "crowdstrike-fql": "//",
+    "elastic-eql": "//",
+    "elastic-lucene": "//",
+    "suricata-ip-rules": "#",
+}
+
+
 def test_empty_input_produces_no_op_comment_for_every_format():
-    for fmt in HUNT_FORMATS:
+    assert set(_EMPTY_MARKERS) == set(HUNT_FORMATS)
+    for fmt, marker in _EMPTY_MARKERS.items():
         out = render_hunt([], fmt)
-        assert out.startswith(("//", "#", "```"))
+        assert out.startswith(marker), f"{fmt}: expected {marker!r}, got {out!r}"
 
 
 # ---- per-emitter shape ----
@@ -135,7 +149,6 @@ def test_suricata_emits_one_rule_per_ip():
 
 
 def test_unknown_format_raises():
-    import pytest
     scans = [_scan("1.1.1.1", IOCType.IP, Verdict.MALICIOUS)]
     with pytest.raises(ValueError):
         render_hunt(scans, "no-such-format")

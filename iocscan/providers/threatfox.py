@@ -7,14 +7,14 @@ from urllib.parse import quote
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
+from iocscan.providers.base import HASH_TYPES, IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
 ENDPOINT = "https://threatfox-api.abuse.ch/api/v1/"
 
 
 class ThreatFox(Provider):
     name = "threatfox"
-    supports = {IOCType.IP, IOCType.DOMAIN, IOCType.URL, IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256}
+    supports = {IOCType.IP, IOCType.DOMAIN, IOCType.URL, *HASH_TYPES}
     requires_key = False
     max_rps = 5.0
 

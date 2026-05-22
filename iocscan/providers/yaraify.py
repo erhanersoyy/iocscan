@@ -6,14 +6,14 @@ import time
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
+from iocscan.providers.base import HASH_TYPES, IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
 ENDPOINT = "https://yaraify-api.abuse.ch/api/v1/"
 
 
 class YARAify(Provider):
     name = "yaraify"
-    supports = {IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256}
+    supports = {*HASH_TYPES}
     requires_key = True
     key_alias = "abusech"
     max_rps = 5.0
@@ -66,6 +66,6 @@ class YARAify(Provider):
         return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency)
 
     def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
-        if ioc_type in (IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256):
+        if ioc_type in HASH_TYPES:
             return f"https://yaraify.abuse.ch/sample/{ioc}/"
         return None

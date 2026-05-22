@@ -6,14 +6,14 @@ from urllib.parse import quote
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
+from iocscan.providers.base import HASH_TYPES, IOCType, Provider, ProviderResult, Verdict, err_result as _err
 
 BASE = "https://otx.alienvault.com/api/v1/indicators"
 
 
 class OTX(Provider):
     name = "otx"
-    supports = {IOCType.IP, IOCType.DOMAIN, IOCType.HASH_MD5, IOCType.HASH_SHA1, IOCType.HASH_SHA256}
+    supports = {IOCType.IP, IOCType.DOMAIN, *HASH_TYPES}
     requires_key = True
     max_rps = 5.0
 
