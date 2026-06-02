@@ -216,14 +216,25 @@ def test_auto_narrow_kicks_in_below_threshold():
 def test_auto_wide_above_threshold():
     """Terminals at or above 100 columns auto-render wide."""
     scan = _scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)
-    # Use a width comfortably wider than 100 (the auto-narrow threshold) so
-    # that the wide layout has room to print full provider labels for all 12.
-    out = _render_with_width([scan], console_width=160)
+    # 200 cols comfortably fits 17 provider labels in full.
+    out = _render_with_width([scan], console_width=200)
     # Wide mode shows every provider column header
     assert "urlhaus" in out
     assert "greynoise" in out
     # No "Details" column header in wide mode
     assert "Details" not in out
+
+
+def test_wide_layout_renders_at_common_160_col_width():
+    """At 160 cols (a common wide-terminal width) the wide layout must not
+    crash and must keep enough columns visible — even if some are truncated.
+    This catches regressions where adding a column breaks rendering, not
+    where it merely shrinks header text."""
+    scan = _scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)
+    out = _render_with_width([scan], console_width=160)
+    assert "Details" not in out
+    # All 19 column joins must still render (header rule integrity).
+    assert out.count("┳") >= 18
 
 
 def test_wide_flag_overrides_narrow_terminal():
@@ -233,8 +244,8 @@ def test_wide_flag_overrides_narrow_terminal():
     # Wide mode has many columns and no "Details" column;
     # provider names may be Rich-truncated at this width.
     assert "Details" not in out
-    # 18 columns (IOC + Verdict + 16 providers) → 17 "┳" joins in the header rule
-    assert out.count("┳") >= 17
+    # 19 columns (IOC + Verdict + 17 providers) → 18 "┳" joins in the header rule
+    assert out.count("┳") >= 18
 
 
 # ---------------------------------------------------------------------------

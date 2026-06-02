@@ -1,4 +1,5 @@
 from iocscan.providers.abuseipdb import AbuseIPDB
+from iocscan.providers.circl_hashlookup import CIRCLHashlookup
 from iocscan.providers.crtsh import CrtSh
 from iocscan.providers.feodo import Feodo
 from iocscan.providers.greynoise import GreyNoise
@@ -27,6 +28,7 @@ ALL_PROVIDERS = [
     GreyNoise(),
     MalwareBazaar(),
     YARAify(),
+    CIRCLHashlookup(),
     URLScan(),
     ShodanInternetDB(),
     TeamCymru(),

@@ -105,6 +105,31 @@ async def test_missing_creation_date_returns_unknown(monkeypatch):
     assert r.score == "—"
 
 
+async def test_subdomain_rejection_surfaces_clear_hint(monkeypatch):
+    """Nominet rejects queries below the registrable level with
+    'the domain name contains too many parts' — surface a parent-domain
+    hint instead of the generic 'no creation date' UNKNOWN."""
+    body = (
+        b"    Error for \"no86estateagency.neuronwebsites.co.uk\".\r\n"
+        b"    This domain cannot be registered because it contravenes the Nominet UK\r\n"
+        b"    naming rules. The reason is:\r\n"
+        b"        the domain name contains too many parts.\r\n"
+    )
+    monkeypatch.setattr(asyncio, "open_connection", _stub_open(body))
+    r = await WhoisAge().lookup(
+        "no86estateagency.neuronwebsites.co.uk", IOCType.DOMAIN, httpx.AsyncClient(), Config(),
+    )
+    assert r.verdict == Verdict.UNKNOWN
+    assert r.score == "subdomain"
+    # `error` stays None on UNKNOWN — reserved for Verdict.ERROR so health_report
+    # error-rate stats aren't polluted by routine subdomain lookups.
+    assert r.error is None
+    assert r.details == (
+        "server: whois.nic.uk",
+        "not registrable (subdomain) - try parent domain",
+    )
+
+
 async def test_unknown_tld_short_circuits_without_socket(monkeypatch):
     """Unknown TLD must not open a TCP connection at all."""
     called: dict = {"opened": False}

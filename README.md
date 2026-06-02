@@ -202,7 +202,7 @@ JSON is the only format that carries the full per-provider breakdown — `jsonl`
 
 ## Providers
 
-iocscan ships with 16 providers. **Verdict** providers contribute a vote to the final verdict; **enrichment** providers add context (ASN, certificates, ports, whois age) without influencing the score.
+iocscan ships with 17 providers. **Verdict** providers contribute a vote to the final verdict; **enrichment** providers add context (ASN, certificates, ports, whois age) without influencing the score.
 
 | Provider | Role | Key | IOC types | Official site |
 |---|---|---|---|---|
@@ -210,6 +210,7 @@ iocscan ships with 16 providers. **Verdict** providers contribute a vote to the 
 | ThreatFox | Verdict | Auth-Key (free) | IP, domain, URL, hash | <https://threatfox.abuse.ch> |
 | MalwareBazaar | Verdict | Auth-Key (free) | hash | <https://bazaar.abuse.ch> |
 | YARAify | Verdict | Auth-Key (free) | hash | <https://yaraify.abuse.ch> |
+| CIRCL Hashlookup | Verdict | none | hash | <https://hashlookup.circl.lu> |
 | Feodo Tracker | Verdict (authoritative) | none | IP | <https://feodotracker.abuse.ch> |
 | Spamhaus DROP | Verdict (authoritative) | none | IP | <https://www.spamhaus.org/drop/> |
 | Tor Exit List | Verdict | none | IP | <https://check.torproject.org/exit-addresses> |
