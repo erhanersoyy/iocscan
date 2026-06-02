@@ -135,7 +135,9 @@ def _build_scan_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--json", action="store_true", help="deprecated alias for --format json")
     p.add_argument("--no-cache", action="store_true", help="bypass cache for this run")
-    p.add_argument("--debug", action="store_true", help="verbose stderr (HTTP, errors)")
+    p.add_argument("--debug", action="store_true",
+                   help="verbose stderr (iocscan loggers + httpx request lines; "
+                        "transport-layer libs stay at WARNING to avoid leaking Auth-Key headers)")
     p.add_argument("--narrow", action="store_true", help="force compact table layout")
     p.add_argument("--wide", action="store_true", help="force wide table layout (overrides terminal-width auto-detect)")
     p.add_argument("--ascii", action="store_true", help="use ASCII glyphs ([!], [~], [ ], …) instead of Unicode")
@@ -288,12 +290,23 @@ def main(argv: list[str] | None = None) -> int:
         args = parser.parse_args(raw_argv)
         args.cmd = None
 
+    # Root stays at WARNING even under --debug: raising it to DEBUG makes
+    # third-party libs (notably hpack) dump every HTTP/2 header, leaking the
+    # abuse.ch auth-key to stderr. Enable DEBUG only for our own namespace and
+    # keep httpx at INFO so request URLs/status still show.
     logging.basicConfig(
-        level=logging.DEBUG if args.debug else logging.WARNING,
+        level=logging.WARNING,
         format="%(asctime)s %(name)s %(levelname)s: %(message)s",
         stream=sys.stderr,
         force=True,
     )
+    # Always reset the per-namespace overrides so a previous debug run (e.g.
+    # in a test session) cannot leak DEBUG output into a non-debug invocation.
+    logging.getLogger("iocscan").setLevel(logging.NOTSET)
+    logging.getLogger("httpx").setLevel(logging.NOTSET)
+    if args.debug:
+        logging.getLogger("iocscan").setLevel(logging.DEBUG)
+        logging.getLogger("httpx").setLevel(logging.INFO)
 
     cli_keys = {
         "abusech": args.abusech_key,

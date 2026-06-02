@@ -55,14 +55,37 @@ class YARAify(Provider):
             return ProviderResult(self.name, Verdict.ERROR, "", None, "parse error", latency)
         if data.get("query_status") == "ok":
             tasks = (data.get("data") or {}).get("tasks") or []
+            # Collect every rule across all tasks. Dedup is case- and
+            # whitespace-insensitive (the same rule reported by two scanners
+            # with different casing should appear once); preserve display
+            # casing of the first occurrence.
+            rules: list[str] = []
+            seen: set[str] = set()
             for task in tasks:
+                if not isinstance(task, dict):
+                    continue
                 for result in task.get("static_results") or []:
-                    rule = result.get("rule_name")
-                    if rule:
-                        return ProviderResult(self.name, Verdict.MALICIOUS, rule, data, None, latency)
-            # ok status but no rule names — still a hit
+                    rule = (result.get("rule_name") or "").strip()
+                    if not rule:
+                        continue
+                    key = rule.lower()
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    rules.append(rule)
+            if rules:
+                details = tuple(f"rule: {r}" for r in rules[1:])
+                return ProviderResult(
+                    self.name, Verdict.MALICIOUS, rules[0], data, None, latency, details=details
+                )
             if tasks:
-                return ProviderResult(self.name, Verdict.MALICIOUS, "yara match", data, None, latency)
+                # ok status, payload has tasks but no extractable rule names —
+                # still a hit; surface the task count so the user knows there
+                # is evidence in `raw` even without a named rule.
+                return ProviderResult(
+                    self.name, Verdict.MALICIOUS, "yara match", data, None, latency,
+                    details=(f"tasks: {len(tasks)} (no named rules)",),
+                )
         return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency)
 
     def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:

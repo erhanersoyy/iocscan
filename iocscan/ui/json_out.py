@@ -35,6 +35,7 @@ def render_json(
                         "score": r.score,
                         "error": r.error,
                         "latency_ms": r.latency_ms,
+                        "details": list(r.details),
                         "raw": r.raw,
                         "permalink": (
                             by_name[r.provider].permalink(s.ioc, s.ioc_type)

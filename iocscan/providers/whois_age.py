@@ -103,6 +103,16 @@ _CREATION_PATTERNS = (
     re.compile(r"^\s*Created Date:\s*(.+)$",        re.MULTILINE | re.IGNORECASE),
 )
 
+# Registry-side "this label is below the registrable level" rejection.
+# Nominet (.uk) explicitly says "the domain name contains too many parts"
+# for three-part queries like `co.uk` itself. Match the literal phrase only
+# — broader patterns (e.g. `subdomain.*not.*allowed`) over-match registry
+# policy / T&C boilerplate and silently drop genuine WHOIS records.
+_SUBDOMAIN_REJECTION_RE = re.compile(
+    r"the domain name contains too many parts",
+    re.IGNORECASE,
+)
+
 
 # IP-specific: ARIN field set requested by users. We collect any of these
 # that appear in the RIR response; first occurrence wins, so a top-level
@@ -194,6 +204,18 @@ class WhoisAge(Provider):
         if text is None:
             return _err(self.name, f"network: {exc_name}", start)
         latency = int((time.perf_counter() - start) * 1000)
+        # Registry rejected the query because the name is below the
+        # registrable level (e.g. three-part .co.uk). Short-circuit with a
+        # clear hint instead of falling through to "no creation date" UNKNOWN.
+        # `error` stays None — by project convention it is reserved for
+        # `Verdict.ERROR`; reusing it on UNKNOWN inflates health-report error
+        # rates. The hint lives in `details` (rendered under the score cell).
+        if _SUBDOMAIN_REJECTION_RE.search(text):
+            return ProviderResult(
+                self.name, Verdict.UNKNOWN, "subdomain", None,
+                None, latency,
+                details=(f"server: {server}", "not registrable (subdomain) - try parent domain"),
+            )
         # TRABIS (and possibly other registries) pad keys with dots:
         # "Created on..............: 2024-Aug-27." — strip the dots so the
         # generic "key: value" regex can match.

@@ -24,7 +24,7 @@ from iocscan.ui.glyph import (
 PROVIDER_ORDER = [
     "urlhaus", "threatfox", "feodo", "tor", "spamhaus",
     "virustotal", "abuseipdb", "otx", "greynoise",
-    "malwarebazaar", "yaraify",
+    "malwarebazaar", "yaraify", "circl_hashlookup",
     "urlscan",
     "shodan_internetdb",
     "team_cymru", "whois_age", "crtsh",
@@ -36,6 +36,7 @@ PROVIDER_LABELS = {
     "virustotal": "vt",
     "abuseipdb": "abuseip",
     "malwarebazaar": "mb",
+    "circl_hashlookup": "circl",
     "shodan_internetdb": "shodan",
     "team_cymru": "asn",
     "whois_age": "whois",
