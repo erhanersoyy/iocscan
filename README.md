@@ -1,6 +1,6 @@
 # iocscan
 
-![iocscan](github_cover_1280x640.png)
+![iocscan](https://github.com/erhanersoyy/iocscan/releases/download/assets/github_cover_1280x640.png)
 
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
