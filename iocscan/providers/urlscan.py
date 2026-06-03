@@ -15,6 +15,7 @@ class URLScan(Provider):
     name = "urlscan"
     supports = {IOCType.URL}
     requires_key = False
+    optional_key = True
     # urlscan.io anonymous tier is strict (~120 req/min hard limit); 1 rps keeps us well below.
     max_rps = 1.0
 

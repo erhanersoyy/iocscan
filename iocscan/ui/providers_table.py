@@ -28,6 +28,23 @@ def _fmt_rate(p: Provider) -> str:
     return " · ".join(parts) if parts else "—"
 
 
+def _fmt_supports(p: Provider) -> str:
+    """Render supported IOC kinds, collapsing the hash subtypes into a single
+    "hash (md5, sha1, sha256)" group instead of three separate entries."""
+    hashes: list[str] = []
+    others: list[str] = []
+    for k in p.supports:
+        v = k.value
+        if v.startswith("hash_"):
+            hashes.append(v.removeprefix("hash_"))
+        else:
+            others.append(v)
+    parts = sorted(others)
+    if hashes:
+        parts.append(f"hash ({', '.join(sorted(hashes))})")
+    return ", ".join(parts)
+
+
 def render_providers_table(
     providers: list[Provider],
     config: Config,
@@ -45,6 +62,8 @@ def render_providers_table(
     )
     t.add_column("Provider")
     t.add_column("Supports")
+    t.add_column("Key")
+    t.add_column("Key Added")
     t.add_column("Status")
     t.add_column("Quota / Rate Limits")
     t.add_column("Last Rate Limit Hit")
@@ -55,7 +74,14 @@ def render_providers_table(
             "[bold bright_green]* active[/]" if active
             else "[bold bright_red]x missing key[/]"
         )
-        kinds = ",".join(sorted(k.value for k in p.supports))
+        kinds = _fmt_supports(p)
+        key_req = p.key_requirement()
+        if key_req == "no":
+            key_added = "—"
+        elif config.key_for(p.key_alias or p.name):
+            key_added = "[bright_green]added[/]"
+        else:
+            key_added = "[bright_red]no key[/]"
         q = quotas.get(p.name) or QuotaResult(p.name, None, None, "No Key")
         if q.used is not None and q.allowed is not None:
             quota_cell = f"{q.used} / {q.allowed}"
@@ -67,6 +93,11 @@ def render_providers_table(
             last_429 = datetime.fromtimestamp(h.last_429_at).strftime("%Y-%m-%d %H:%M")
         else:
             last_429 = "—"
-        t.add_row(p.name, kinds, status, quota_cell, last_429)
+        t.add_row(p.name, kinds, key_req, key_added, status, quota_cell, last_429)
 
     console.print(t)
+    console.print(
+        "\n[bold]To add keys:[/] edit config.toml or run [cyan]'iocscan config set <provider> <key>'[/].\n"
+        "[yellow]Warning:[/] 'iocscan config set' may expose API keys by recording them in your shell history; "
+        "editing config.toml directly avoids this."
+    )

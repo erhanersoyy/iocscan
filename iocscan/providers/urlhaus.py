@@ -15,6 +15,8 @@ class URLhaus(Provider):
     name = "urlhaus"
     supports = {IOCType.DOMAIN, IOCType.IP, IOCType.URL}
     requires_key = False
+    optional_key = True
+    key_alias = "abusech"
     max_rps = 5.0
 
     async def lookup(self, ioc: str, ioc_type: IOCType, client: httpx.AsyncClient, config: Config) -> ProviderResult:

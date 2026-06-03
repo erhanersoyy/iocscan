@@ -51,6 +51,11 @@ class Provider(ABC):
     # providers that share a vendor key (e.g. abuse.ch MalwareBazaar /
     # YARAify / URLhaus / ThreatFox all key under "abusech").
     key_alias: str | None = None
+    # True when the provider works anonymously but uses a key for higher
+    # quota / fuller results if one is configured (e.g. urlscan, greynoise).
+    # Distinguishes "key-optional" from "never uses a key" — both have
+    # requires_key = False, so requires_key alone can't tell them apart.
+    optional_key: bool = False
     max_rps: float | None = None
     max_per_day: int | None = None
     enrichment_only: bool = False
@@ -64,6 +69,13 @@ class Provider(ABC):
         if not self.requires_key:
             return True
         return bool(config.key_for(self.key_alias or self.name))
+
+    def key_requirement(self) -> str:
+        """Classify the provider's API-key model for display: one of
+        "required", "optional", or "no"."""
+        if self.requires_key:
+            return "required"
+        return "optional" if self.optional_key else "no"
 
     def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
         """Return a human-clickable URL to the provider's web UI for this IOC.
