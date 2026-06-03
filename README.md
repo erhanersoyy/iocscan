@@ -145,7 +145,7 @@ Pick the two or three you actually use. The point is: one IOC → one short comm
 
 Example scan of a mixed batch of IPs and domains (default `solarized-dark` theme, wide table):
 
-![iocscan example output](test_output.png)
+![iocscan example output](https://github.com/erhanersoyy/iocscan/releases/download/assets/test_output.png)
 
 iocscan renders a **wide** table when the terminal is at least 100 columns and a **compact** table when it isn't. Use `--narrow` to force compact or `--wide` to force wide. Pass `--ascii` to swap Unicode glyphs for `[!]`/`[~]`/`[ ]`/etc. fallbacks. The standard `NO_COLOR` and `FORCE_COLOR` env vars are honored to disable or force ANSI colors.
 
