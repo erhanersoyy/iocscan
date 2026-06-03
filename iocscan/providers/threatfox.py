@@ -16,6 +16,8 @@ class ThreatFox(Provider):
     name = "threatfox"
     supports = {IOCType.IP, IOCType.DOMAIN, IOCType.URL, *HASH_TYPES}
     requires_key = False
+    optional_key = True
+    key_alias = "abusech"
     max_rps = 5.0
 
     async def lookup(self, ioc: str, ioc_type: IOCType, client: httpx.AsyncClient, config: Config) -> ProviderResult:

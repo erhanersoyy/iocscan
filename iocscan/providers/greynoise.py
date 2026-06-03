@@ -14,6 +14,7 @@ class GreyNoise(Provider):
     name = "greynoise"
     supports = {IOCType.IP}
     requires_key = False
+    optional_key = True
     max_rps = 1.0
 
     async def lookup(self, ioc: str, ioc_type: IOCType, client: httpx.AsyncClient, config: Config) -> ProviderResult:
