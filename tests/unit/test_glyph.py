@@ -4,6 +4,7 @@ from iocscan.ui.glyph import (
     CELL_HARD_ERROR,
     CELL_NO_RECORD,
     CELL_RATE_LIMITED,
+    CELL_UNKNOWN,
     VERDICT_GLYPH,
     VERDICT_GLYPH_ASCII,
     classify_error,
@@ -14,10 +15,13 @@ from iocscan.ui.glyph import (
 
 
 def test_every_verdict_has_unicode_glyph():
-    """Every Verdict member must map to a non-empty unicode glyph."""
+    """Every Verdict maps to a glyph; UNKNOWN is intentionally word-only."""
     for v in Verdict:
         assert v in VERDICT_GLYPH
-        assert VERDICT_GLYPH[v].strip()
+        if v is Verdict.UNKNOWN:
+            assert VERDICT_GLYPH[v] == ""
+        else:
+            assert VERDICT_GLYPH[v].strip()
 
 
 def test_every_verdict_has_ascii_fallback():
@@ -64,5 +68,5 @@ def test_classify_error_ascii_returns_ascii_chars():
 
 def test_cell_semantics_are_distinct():
     """All 5 cell-semantic glyphs must be visually distinct."""
-    glyphs = {CELL_NO_RECORD, "·", CELL_HARD_ERROR, CELL_RATE_LIMITED, CELL_AUTH_FAIL}
+    glyphs = {CELL_NO_RECORD, CELL_UNKNOWN, CELL_HARD_ERROR, CELL_RATE_LIMITED, CELL_AUTH_FAIL}
     assert len(glyphs) == 5

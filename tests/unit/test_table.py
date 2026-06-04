@@ -23,10 +23,10 @@ def _scan(verdict, **per_provider):
     return ScanResult("1.2.3.4", IOCType.IP, verdict, results, responding, len(PROVIDERS))
 
 
-def _render(scans, narrow=False):
+def _render(scans):
     buf = StringIO()
     console = Console(file=buf, width=200, force_terminal=False, color_system=None)
-    render_table(scans, console, narrow=narrow)
+    render_table(scans, console)
     return buf.getvalue()
 
 
@@ -71,16 +71,16 @@ def test_table_whitelist_flag_renders_as_1k():
     assert "⚑" in out
 
 
-def test_narrow_mode_uses_compact_layout():
-    out = _render([_scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)], narrow=True)
+def test_compact_default_uses_compact_layout():
+    out = _render([_scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)])
     assert "urlhaus" in out
     # Compact mode now lists every provider on its own line, in PROVIDER_ORDER
     assert "greynoise" in out
 
 
-def test_narrow_mode_lists_all_providers_in_order():
+def test_compact_default_lists_all_providers_in_order():
     """Compact layout shows every provider, one per line, in PROVIDER_ORDER."""
-    out = _render([_scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN, otx=Verdict.CLEAN)], narrow=True)
+    out = _render([_scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN, otx=Verdict.CLEAN)])
     # All 16 provider labels (using display labels) must appear, each as a
     # "<label>: " row prefix. Anchoring on ": " avoids accidental substring
     # matches like "ct" inside "Verdict".
@@ -92,6 +92,49 @@ def test_narrow_mode_lists_all_providers_in_order():
     assert all(p >= 0 for p in positions), f"Missing labels: {[l for l, p in zip(expected_labels, positions) if p < 0]}"
     # Positions must be strictly increasing (i.e. labels appear in PROVIDER_ORDER)
     assert positions == sorted(positions), "Provider labels are not in PROVIDER_ORDER"
+
+
+def test_compact_omits_providers_that_dont_support_the_ioc():
+    """Default table drops providers with no result for this IOC (no 'n/a' rows)."""
+    results = [
+        ProviderResult("virustotal", Verdict.MALICIOUS, "10/70", None, None, 10),
+        ProviderResult("malwarebazaar", Verdict.CLEAN, "—", None, None, 10),
+    ]
+    scan = ScanResult("44d88612fea8a8f36de82e1278abb02f", IOCType.HASH_MD5,
+                      Verdict.MALICIOUS, results, 1, 2)
+    out = _render([scan])
+    assert "vt: " in out            # supported provider is shown
+    assert "mb: " in out
+    assert "n/a" not in out         # no not-applicable rows
+    assert "feodo" not in out       # unsupported providers omitted entirely
+    assert "spamhaus" not in out
+
+
+def _capture(fn):
+    from rich.console import Console
+    buf = StringIO()
+    fn(Console(file=buf, width=200, force_terminal=False, color_system=None))
+    return buf.getvalue()
+
+
+def test_render_legend_lists_glyph_entries_only():
+    from iocscan.ui.table import render_legend
+    out = _capture(render_legend)
+    for word in ("malicious", "suspicious", "clean", "error",
+                 "inconclusive", "rate-limit", "auth", "whitelist"):
+        assert word in out, word
+    # Word-only signals (glyph-less) are intentionally absent from the legend.
+    assert "unknown" not in out
+    assert "n/a" not in out
+
+
+def test_render_glyph_reference_documents_every_symbol():
+    from iocscan.ui.table import render_glyph_reference
+    out = _capture(render_glyph_reference)
+    for word in ("malicious", "suspicious", "clean", "unknown", "error",
+                 "inconclusive", "no record", "rate-limit", "auth", "n/a",
+                 "whitelist"):
+        assert word in out, word
 
 
 # ---------------------------------------------------------------------------
@@ -110,11 +153,11 @@ def _make_scan_with_provider_result(ioc: str, provider_result: ProviderResult) -
     )
 
 
-def _render_no_color(scans, narrow=False):
+def _render_no_color(scans, wide=False):
     """Render to plain text with no color/markup interpretation."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, no_color=True, width=200)
-    render_table(scans, console, narrow=narrow)
+    render_table(scans, console, wide=wide)
     return buf.getvalue()
 
 
@@ -131,15 +174,15 @@ def test_table_escapes_malicious_score():
     )
     scan = _make_scan_with_provider_result("1.2.3.4", pr)
 
-    # Wide layout: score appears in individual provider column
-    out_wide = _render_no_color([scan], narrow=False)
+    # Wide (transposed) layout: score appears in the per-provider row
+    out_wide = _render_no_color([scan], wide=True)
     # The literal bracket characters must be present
     assert "[bold red]FAKE[/]" in out_wide, (
         "Malicious score markup was rendered rather than escaped in wide layout"
     )
 
-    # Compact layout: malicious scores appear in the Details column
-    out_compact = _render_no_color([scan], narrow=True)
+    # Compact layout (default): malicious scores appear in the Details column
+    out_compact = _render_no_color([scan])
     assert "[bold red]FAKE[/]" in out_compact, (
         "Malicious score markup was rendered rather than escaped in compact layout"
     )
@@ -158,7 +201,7 @@ def test_table_escapes_malicious_error():
     )
     scan = _make_scan_with_provider_result("1.2.3.4", pr)
 
-    out = _render_no_color([scan], narrow=False)
+    out = _render_no_color([scan], wide=True)
     # The literal markup text must appear verbatim in output
     assert "[link=file:///etc/passwd]click[/]" in out, (
         "Malicious error markup was rendered rather than escaped"
@@ -185,67 +228,57 @@ def test_table_escapes_ioc_brackets():
         total=1,
     )
 
-    out_wide = _render_no_color([scan], narrow=False)
+    out_wide = _render_no_color([scan], wide=True)
     assert "evil[bracket].com" in out_wide, (
         "IOC bracket characters were not preserved as literals in wide layout"
     )
 
-    out_compact = _render_no_color([scan], narrow=True)
+    out_compact = _render_no_color([scan])
     assert "evil[bracket].com" in out_compact, (
         "IOC bracket characters were not preserved as literals in compact layout"
     )
 
 
-# --- Auto-narrow threshold + --wide override (PR for "narrow vermedim narrow geldi") ---
+# --- Compact-by-default + --wide override (layout policy) ---
 
-def _render_with_width(scans, console_width, narrow=False, wide=False):
+def _render_with_width(scans, console_width, wide=False):
     buf = StringIO()
     console = Console(file=buf, width=console_width, force_terminal=False, color_system=None)
-    render_table(scans, console, narrow=narrow, wide=wide)
+    render_table(scans, console, wide=wide)
     return buf.getvalue()
 
 
-def test_auto_narrow_kicks_in_below_threshold():
-    """Terminals narrower than 100 columns auto-render compact."""
+def test_default_renders_compact_at_wide_terminal():
+    """The legacy auto-wide selection was retired: compact is the universal
+    default regardless of width (the transposed grid is opt-in via --wide)."""
     scan = _scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)
-    out = _render_with_width([scan], console_width=99)
-    # Compact mode emits a 3-column header (IOC / Verdict / Details)
-    assert "Details" in out
-
-
-def test_auto_wide_above_threshold():
-    """Terminals at or above 100 columns auto-render wide."""
-    scan = _scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)
-    # 200 cols comfortably fits 17 provider labels in full.
     out = _render_with_width([scan], console_width=200)
-    # Wide mode shows every provider column header
+    # Compact emits the 3-column header (IOC / Verdict / Details).
+    assert "Details" in out
     assert "urlhaus" in out
     assert "greynoise" in out
-    # No "Details" column header in wide mode
-    assert "Details" not in out
 
 
-def test_wide_layout_renders_at_common_160_col_width():
-    """At 160 cols (a common wide-terminal width) the wide layout must not
-    crash and must keep enough columns visible — even if some are truncated.
-    This catches regressions where adding a column breaks rendering, not
-    where it merely shrinks header text."""
+def test_wide_flag_renders_transposed_grid():
+    """--wide renders the transposed layout: a 'Provider' header column plus
+    one column per IOC, a leading Verdict row, and every provider as a row."""
     scan = _scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)
-    out = _render_with_width([scan], console_width=160)
-    assert "Details" not in out
-    # All 19 column joins must still render (header rule integrity).
-    assert out.count("┳") >= 18
+    out = _render_with_width([scan], console_width=200, wide=True)
+    assert "Provider" in out      # header of the transposed first column
+    assert "Verdict" in out       # leading per-IOC verdict row
+    assert "1.2.3.4" in out       # IOC is now a column header
+    assert "Details" not in out   # not the compact layout
+    assert "urlhaus" in out
+    assert "greynoise" in out
 
 
-def test_wide_flag_overrides_narrow_terminal():
-    """--wide forces the wide layout even when terminal is narrow."""
+def test_wide_flag_works_at_narrow_terminal():
+    """--wide forces the transposed grid even when the terminal is narrow;
+    with only one IOC there are just two columns, so it fits comfortably."""
     scan = _scan(Verdict.CLEAN, urlhaus=Verdict.CLEAN)
     out = _render_with_width([scan], console_width=60, wide=True)
-    # Wide mode has many columns and no "Details" column;
-    # provider names may be Rich-truncated at this width.
+    assert "Provider" in out
     assert "Details" not in out
-    # 19 columns (IOC + Verdict + 17 providers) → 18 "┳" joins in the header rule
-    assert out.count("┳") >= 18
 
 
 # ---------------------------------------------------------------------------
@@ -283,7 +316,7 @@ def test_render_table_compact_wraps_in_link_markup_when_opted_in():
     scan = _make_scan("1.2.3.4", IOCType.IP, Verdict.MALICIOUS, [
         ProviderResult("virustotal", Verdict.MALICIOUS, "12/70", None, None, 100),
     ])
-    render_table([scan], console, narrow=True, providers=[VirusTotal()], links=True)
+    render_table([scan], console, providers=[VirusTotal()], links=True)
     out = buf.getvalue()
     assert "\x1b]8;" in out
     assert "virustotal.com/gui/ip-address/1.2.3.4" in out

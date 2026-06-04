@@ -89,9 +89,10 @@ def _provider_panel(
     if result.raw is not None:
         lines.extend(_render_raw(result.raw))
 
+    verdict_label = f"{glyph} {result.verdict.value}" if glyph else result.verdict.value
     return Panel(
         "\n".join(lines),
-        title=f"{provider.name}  {glyph} {result.verdict.value}",
+        title=f"{provider.name}  {verdict_label}",
         expand=False,
     )
 

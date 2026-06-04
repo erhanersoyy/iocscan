@@ -7,7 +7,7 @@ stays clean.
 Layout:
     ─── Summary ───────────────────────────────
       Scanned    N IOCs (Ki ip, Kd domain) in T s
-      Verdicts   ● m malicious  ◐ s suspicious  ○ c clean  · u unknown
+      Verdicts   ● m malicious  ◐ s suspicious  ○ c clean  u unknown
       Providers  P responded · K errors
       Cache      H hits · F fresh
       Exit code  E (worst verdict: V)
@@ -70,7 +70,8 @@ def render_summary(
     for v in (Verdict.MALICIOUS, Verdict.SUSPICIOUS, Verdict.CLEAN, Verdict.UNKNOWN):
         if counts[v] > 0:
             g = verdict_glyph(v, ascii_only=ascii_only)
-            parts.append(f"[{VERDICT_STYLES[v]}]{g}[/] {counts[v]} {v.value}")
+            gp = f"[{VERDICT_STYLES[v]}]{g}[/] " if g else ""
+            parts.append(f"{gp}{counts[v]} {v.value}")
     if parts:
         console.print(f"  Verdicts   {'  '.join(parts)}")
 

@@ -24,7 +24,7 @@ from iocscan.ui.console import make_console
 from iocscan.ui.export import EXPORT_FORMATS, render_export
 from iocscan.ui.footer import render_summary
 from iocscan.ui.json_out import render_json
-from iocscan.ui.table import render_table
+from iocscan.ui.table import render_glyph_reference, render_legend, render_table
 from iocscan.ui.themes import DEFAULT_THEME, list_theme_names
 
 FORMAT_CHOICES = ("table", "json", *EXPORT_FORMATS)
@@ -74,7 +74,7 @@ def _read_inputs(args) -> list[str]:
     return items
 
 
-_SUBCOMMANDS = {"config", "cache", "providers", "whitelist", "explain", "health"}
+_SUBCOMMANDS = {"config", "cache", "providers", "whitelist", "explain", "health", "glyphs"}
 
 
 _SCAN_EPILOG = """\
@@ -138,8 +138,7 @@ def _build_scan_parser() -> argparse.ArgumentParser:
     p.add_argument("--debug", action="store_true",
                    help="verbose stderr (iocscan loggers + httpx request lines; "
                         "transport-layer libs stay at WARNING to avoid leaking Auth-Key headers)")
-    p.add_argument("--narrow", action="store_true", help="force compact table layout")
-    p.add_argument("--wide", action="store_true", help="force wide table layout (overrides terminal-width auto-detect)")
+    p.add_argument("--wide", action="store_true", help="render the transposed grid (providers as rows, IOCs as columns) instead of the compact default")
     p.add_argument("--ascii", action="store_true", help="use ASCII glyphs ([!], [~], [ ], …) instead of Unicode")
     p.add_argument(
         "--theme",
@@ -224,6 +223,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         description="Print one row per provider: configured key, rate limit, and (when available) remaining quota.",
     )
 
+    sub.add_parser(
+        "glyphs",
+        help="show the symbol reference (verdict glyphs, cell markers, whitelist flag)",
+        description="Print a table mapping every symbol used in the output to its meaning.",
+    )
+
     explain_p = sub.add_parser(
         "explain",
         help="explain the verdict for one IOC (per-provider rationale + voting math)",
@@ -267,7 +272,6 @@ def main(argv: list[str] | None = None) -> int:
         args.json = False
         args.no_cache = False
         args.debug = False
-        args.narrow = False
         args.wide = False
         args.ascii = False
         args.theme = os.environ.get("IOCSCAN_THEME", DEFAULT_THEME)
@@ -328,6 +332,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_cache(args, config)
     if args.cmd == "providers":
         return _cmd_providers(config)
+    if args.cmd == "glyphs":
+        return _cmd_glyphs(args)
     if args.cmd == "whitelist":
         return _cmd_whitelist(args)
     if args.cmd == "explain":
@@ -497,12 +503,13 @@ async def _run_scan(parsed, config, args) -> int:
             console = make_console(ascii_only=args.ascii, theme=args.theme)
             render_table(
                 scans_out, console,
-                narrow=args.narrow, wide=args.wide,
+                wide=args.wide,
                 ascii_only=args.ascii, defang=args.defang,
                 providers=ALL_PROVIDERS,
                 links=args.cell_links,
             )
             if console.is_terminal and len(scans_out) > 0:
+                render_legend(console, ascii_only=args.ascii)
                 render_summary(
                     scans_out, elapsed_ms, exit_code, console,
                     cache_hits=cache_hits, cache_fresh=cache_fresh,
@@ -732,9 +739,16 @@ def _cmd_list_themes(args) -> int:
             f"[verdict.malicious]● malicious[/] "
             f"[verdict.suspicious]◐ suspicious[/] "
             f"[verdict.clean]○ clean[/] "
-            f"[verdict.unknown]· unknown[/] "
+            f"[verdict.unknown]unknown[/] "
             f"[verdict.error]✗ error[/]"
         )
+    return 0
+
+
+def _cmd_glyphs(args) -> int:
+    """Print the symbol reference table, then exit."""
+    console = make_console(ascii_only=args.ascii, theme=args.theme)
+    render_glyph_reference(console)
     return 0
 
 

@@ -16,7 +16,10 @@ def test_providers_subcommand_emits_ascii_table(tmp_path):
     Run with HOME=tmp_path so no API keys are configured — every provider
     should render as 'missing key' (red) or 'active' (anonymous providers).
     """
-    env = {"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
+    # Force a wide console: with no TTY, Rich defaults to 80 columns, which is
+    # too narrow for the 7-column providers table and truncates header/cell
+    # text ("missing key" → "missing\nkey", "Last Rate Limit Hit" → "Hit").
+    env = {"HOME": str(tmp_path), "PATH": "/usr/bin:/bin", "COLUMNS": "220"}
     r = subprocess.run(
         [sys.executable, "-m", "iocscan", "providers"],
         capture_output=True, text=True, env=env, timeout=60,
