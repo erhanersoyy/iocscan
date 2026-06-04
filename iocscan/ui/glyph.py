@@ -5,9 +5,11 @@ so output remains readable when any one channel is unavailable (NO_COLOR,
 narrow terminals, screen readers).
 
 Cell semantics (5-way) distinguishes how a provider responded, beyond the
-verdict itself: blocklist miss vs not-applicable vs hard error vs rate
+verdict itself: blocklist miss vs inconclusive vs hard error vs rate
 limit vs auth fail. This lets a SOC analyst tell "didn't run" from
-"ran and saw nothing" at a glance.
+"ran and saw nothing" at a glance. Not-applicable (provider doesn't
+support this IOC type) is rendered as the plain word "n/a", not a glyph,
+so the middle-dot is never overloaded against the UNKNOWN verdict.
 """
 from __future__ import annotations
 
@@ -15,11 +17,15 @@ from iocscan.providers.base import Verdict
 
 # ----- Verdict glyphs ----------------------------------------------------
 
+# UNKNOWN has no glyph on purpose: it is the weakest verdict (insufficient
+# coverage) and is shown as the plain colored word "unknown". Giving it the
+# middle-dot collided with the not-applicable cell marker, so it relies on
+# the color + word channels instead.
 VERDICT_GLYPH: dict[Verdict, str] = {
     Verdict.MALICIOUS:  "●",
     Verdict.SUSPICIOUS: "◐",
     Verdict.CLEAN:      "○",
-    Verdict.UNKNOWN:    "·",
+    Verdict.UNKNOWN:    "",
     Verdict.ERROR:      "✗",
 }
 
@@ -27,7 +33,7 @@ VERDICT_GLYPH_ASCII: dict[Verdict, str] = {
     Verdict.MALICIOUS:  "[!]",
     Verdict.SUSPICIOUS: "[~]",
     Verdict.CLEAN:      "[ ]",
-    Verdict.UNKNOWN:    "[.]",
+    Verdict.UNKNOWN:    "",
     Verdict.ERROR:      "[x]",
 }
 
@@ -44,20 +50,18 @@ def whitelist_glyph(*, ascii_only: bool = False) -> str:
 
 
 # ----- 5-way cell semantics ----------------------------------------------
-# Used in the wide table when a provider responded but produced no numeric
-# score, or failed in a specific way. The compact / narrow table uses the
+# Used in the transposed (--wide) grid when a provider responded but produced
+# no numeric score, or failed in a specific way. The compact table uses the
 # same labels through its "Details" column.
 
 CELL_NO_RECORD       = "—"     # provider ran, no hit / score 0 — votes CLEAN
 CELL_UNKNOWN         = "?"     # provider responded but verdict is inconclusive
-CELL_NA              = "·"     # provider doesn't apply to this IOC type
 CELL_HARD_ERROR      = "✗"     # generic failure (network, parse, 5xx)
 CELL_RATE_LIMITED    = "▲"     # 429 — retryable
 CELL_AUTH_FAIL       = "⚡"     # 401/403 — fixable by user
 
 CELL_NO_RECORD_ASCII    = "-"
 CELL_UNKNOWN_ASCII      = "?"
-CELL_NA_ASCII           = "."
 CELL_HARD_ERROR_ASCII   = "x"
 CELL_RATE_LIMITED_ASCII = "!"
 CELL_AUTH_FAIL_ASCII    = "@"

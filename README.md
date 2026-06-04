@@ -125,8 +125,7 @@ Pick the two or three you actually use. The point is: one IOC → one short comm
 | `--json` | Deprecated alias for `--format json`. |
 | `--no-cache` | Bypass the SQLite cache for this run and re-query every provider live. |
 | `--debug` | Verbose stderr logging (HTTP traffic, provider errors) without leaking API keys. |
-| `--narrow` | Force the compact table layout, even on wide terminals. |
-| `--wide` | Force the wide table layout, even when the terminal is narrower than 100 columns. |
+| `--wide` | Render the transposed grid (providers as rows, IOCs as columns) instead of the compact default. |
 | `--ascii` | Use ASCII glyphs (`[!]`, `[~]`, `[ ]`) instead of Unicode for compatibility with old terminals. |
 | `--theme <name>` | Pick a color theme: `solarized-dark` (default), `forensic`, `mocha`, `latte`. Env: `IOCSCAN_THEME`. |
 | `--list-themes` | Render a one-line preview of every available theme, then exit. |
@@ -143,11 +142,11 @@ Pick the two or three you actually use. The point is: one IOC → one short comm
 
 ## Reading the output
 
-Example scan of a mixed batch of IPs and domains (default `solarized-dark` theme, wide table):
+Example scan of a mixed batch of IPs and domains (default `solarized-dark` theme, `--wide` grid):
 
 ![iocscan example output](https://github.com/erhanersoyy/iocscan/releases/download/assets/test_output.png)
 
-iocscan renders a **wide** table when the terminal is at least 100 columns and a **compact** table when it isn't. Use `--narrow` to force compact or `--wide` to force wide. Pass `--ascii` to swap Unicode glyphs for `[!]`/`[~]`/`[ ]`/etc. fallbacks. The standard `NO_COLOR` and `FORCE_COLOR` env vars are honored to disable or force ANSI colors.
+iocscan renders the **compact** table by default — it lists every provider on its own line and fits any terminal width. Pass `--wide` to switch to the transposed grid (providers as rows, IOCs as columns), handy when scanning a handful of IOCs side by side. Pass `--ascii` to swap Unicode glyphs for `[!]`/`[~]`/`[ ]`/etc. fallbacks, or run `iocscan glyphs` for the full symbol reference. The standard `NO_COLOR` and `FORCE_COLOR` env vars are honored to disable or force ANSI colors.
 
 ### Themes
 
@@ -174,7 +173,7 @@ Each provider column reports one cell per IOC. The cell tells you what the provi
 |---|---|
 | `— (no hit - clean)` | Provider ran successfully and found nothing on this IOC. Counts as a clean vote toward the verdict. |
 | `?` | Provider responded but the result is inconclusive (ambiguous score, insufficient data). Does not count toward coverage. |
-| `·` | Provider does not apply to this IOC type (e.g. an IP-only feed against a domain). Excluded from coverage. |
+| `n/a` | Provider does not apply to this IOC type (e.g. an IP-only feed against a domain). Excluded from coverage. Only shown in the `--wide` grid; the compact default omits the row entirely. |
 | `0/92`, `50 pulses`, `tor exit`, `15%` | Numeric or labelled score returned by the provider. Interpretation is provider-specific. |
 | `✗ <msg>` | Hard failure: network error, 5xx response, or a parse error. Does not count toward coverage. |
 | `▲ 429 rate limit` | Provider rate-limited the request. Retryable; does not count toward coverage. |
