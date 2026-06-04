@@ -30,6 +30,34 @@ from iocscan.ui.glyph import verdict_glyph
 _RAW_LIMIT = 500
 
 
+def _render_raw(raw: object) -> list[str]:
+    """Render a provider's raw payload, lifting WHOIS onto its own stacked lines.
+
+    VirusTotal returns the whole WHOIS record as one newline-delimited string at
+    data.attributes.whois. json.dumps escapes those newlines to a literal "\\n",
+    collapsing the record onto one unreadable line — so pull whois out and print
+    each field on its own line, then dump the remaining payload as before.
+    """
+    whois = ""
+    if isinstance(raw, dict):
+        attrs = raw.get("data")
+        attrs = attrs.get("attributes") if isinstance(attrs, dict) else None
+        if isinstance(attrs, dict) and isinstance(attrs.get("whois"), str):
+            whois = attrs["whois"]
+            slim = {k: v for k, v in attrs.items() if k != "whois"}
+            raw = {**raw, "data": {**raw["data"], "attributes": slim}}
+
+    raw_str = json.dumps(raw, indent=2, default=str)
+    if len(raw_str) > _RAW_LIMIT:
+        raw_str = raw_str[:_RAW_LIMIT] + "…"
+    lines = ["raw:", _escape(raw_str)]
+
+    if whois:
+        lines.append("whois:")
+        lines.extend(f"  {_escape(w.strip())}" for w in whois.splitlines() if w.strip())
+    return lines
+
+
 def _provider_panel(
     result: ProviderResult, provider: Provider, ioc: str, ioc_type: IOCType,
 ) -> Panel:
@@ -59,11 +87,7 @@ def _provider_panel(
             lines.append(f"  {_escape(d)}")
 
     if result.raw is not None:
-        raw_str = json.dumps(result.raw, indent=2, default=str)
-        if len(raw_str) > _RAW_LIMIT:
-            raw_str = raw_str[:_RAW_LIMIT] + "…"
-        lines.append("raw:")
-        lines.append(_escape(raw_str))
+        lines.extend(_render_raw(result.raw))
 
     return Panel(
         "\n".join(lines),
