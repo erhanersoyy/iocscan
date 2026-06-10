@@ -17,9 +17,11 @@ from iocscan.ui.glyph import (
     CELL_RATE_LIMITED_ASCII,
     CELL_UNKNOWN,
     CELL_UNKNOWN_ASCII,
+    VERDICT_STYLES,
     classify_error,
     classify_error_ascii,
     verdict_glyph,
+    verdict_label,
     whitelist_glyph,
 )
 
@@ -43,14 +45,6 @@ PROVIDER_LABELS = {
     "team_cymru": "asn",
     "whois_age": "whois",
     "crtsh": "ct",
-}
-
-VERDICT_STYLES = {
-    Verdict.MALICIOUS:  "verdict.malicious",
-    Verdict.SUSPICIOUS: "verdict.suspicious",
-    Verdict.CLEAN:      "verdict.clean",
-    Verdict.UNKNOWN:    "verdict.unknown",
-    Verdict.ERROR:      "verdict.error",
 }
 
 # Fallback gray when the active console has no `table.border` theme entry
@@ -106,9 +100,8 @@ def _display_ioc(ioc: str, *, defang: bool) -> str:
 
 
 def _format_verdict_cell(s: ScanResult, *, ascii_only: bool) -> str:
-    glyph = verdict_glyph(s.verdict, ascii_only=ascii_only)
     style = VERDICT_STYLES[s.verdict]
-    label = f"{glyph} {s.verdict.value}" if glyph else s.verdict.value
+    label = verdict_label(s.verdict, ascii_only=ascii_only)
     text = f"[{style}]{label}[/] ({s.responding}/{s.total})"
     if s.whitelisted:
         wl = whitelist_glyph(ascii_only=ascii_only)
@@ -212,13 +205,45 @@ def _render_transposed(
     console.print(t)
 
 
-_LEGEND_VERDICTS = [
-    (Verdict.MALICIOUS,  "malicious"),
-    (Verdict.SUSPICIOUS, "suspicious"),
-    (Verdict.CLEAN,      "clean"),
-    (Verdict.UNKNOWN,    "unknown"),
-    (Verdict.ERROR,      "error"),
+# Single source of truth for every table glyph's appearance and meaning.
+# Each entry: (unicode symbol, ascii symbol, theme style, word, description,
+# in_legend). render_legend() emits the in_legend subset as a one-liner;
+# render_glyph_reference() documents the full list. Defining a glyph once here
+# keeps the two views from drifting. Order is the reference table's row order;
+# the legend follows the same order, which reproduces its historical layout
+# (verdict glyphs first, then cell/whitelist markers, with the word-only
+# unknown / no-record / n/a entries skipped).
+_GLYPH_ROWS: list[tuple[str, str, str, str, str, bool]] = [
+    (verdict_glyph(Verdict.MALICIOUS), verdict_glyph(Verdict.MALICIOUS, ascii_only=True),
+     "verdict.malicious", "malicious",
+     "Confirmed malicious — authoritative blocklist hit or ≥ 30% weighted vote.", True),
+    (verdict_glyph(Verdict.SUSPICIOUS), verdict_glyph(Verdict.SUSPICIOUS, ascii_only=True),
+     "verdict.suspicious", "suspicious",
+     "Flagged by some providers but below the malicious threshold.", True),
+    (verdict_glyph(Verdict.CLEAN), verdict_glyph(Verdict.CLEAN, ascii_only=True),
+     "verdict.clean", "clean",
+     "No provider flagged the IOC.", True),
+    ("unknown", "unknown", "verdict.unknown", "unknown",
+     "Fewer than min-coverage providers responded — an honest ‘don't know’.", False),
+    (verdict_glyph(Verdict.ERROR), verdict_glyph(Verdict.ERROR, ascii_only=True),
+     "verdict.error", "error",
+     "Provider call failed (network, parse, or 5xx).", True),
+    (CELL_UNKNOWN, CELL_UNKNOWN_ASCII, "verdict.unknown", "inconclusive",
+     "Provider responded but could not determine a verdict.", True),
+    (CELL_NO_RECORD, CELL_NO_RECORD_ASCII, "muted", "no record",
+     "Provider ran and saw nothing — counts as clean.", False),
+    (CELL_RATE_LIMITED, CELL_RATE_LIMITED_ASCII, "verdict.suspicious", "rate-limit",
+     "Provider returned HTTP 429 — retryable.", True),
+    (CELL_AUTH_FAIL, CELL_AUTH_FAIL_ASCII, "verdict.error", "auth",
+     "Provider auth failed (401/403) — fix the API key.", True),
+    ("n/a", "n/a", "muted", "n/a",
+     "Provider doesn't support this IOC type.", False),
+    (whitelist_glyph(), whitelist_glyph(ascii_only=True), "verdict.whitelisted", "whitelist",
+     "IOC is in the bundled/Tranco whitelist; verdict clamped to clean.", True),
 ]
+
+# The legend uses "rate-limit"/"auth" wording for the cell markers; the
+# reference reuses the same word column. Both read from _GLYPH_ROWS above.
 
 
 def render_legend(console: Console, *, ascii_only: bool = False) -> None:
@@ -227,21 +252,14 @@ def render_legend(console: Console, *, ascii_only: bool = False) -> None:
     Teaches the three-channel (glyph + color + word) encoding so a first-time
     reader can decode the table without external docs.
     """
-    # Legend lists only glyph-bearing signals. UNKNOWN and n/a render as plain
-    # words in the table (self-explanatory), so they are intentionally omitted.
-    parts = []
-    for v, word in _LEGEND_VERDICTS:
-        glyph = verdict_glyph(v, ascii_only=ascii_only)
-        if glyph:
-            parts.append(f"[{VERDICT_STYLES[v]}]{glyph}[/] [muted]{word}[/]")
-    rl   = CELL_RATE_LIMITED_ASCII if ascii_only else CELL_RATE_LIMITED
-    auth = CELL_AUTH_FAIL_ASCII if ascii_only else CELL_AUTH_FAIL
-    unk  = CELL_UNKNOWN_ASCII if ascii_only else CELL_UNKNOWN
-    wl   = whitelist_glyph(ascii_only=ascii_only)
-    parts.append(f"[verdict.unknown]{unk}[/] [muted]inconclusive[/]")
-    parts.append(f"[verdict.suspicious]{rl}[/] [muted]rate-limit[/]")
-    parts.append(f"[verdict.error]{auth}[/] [muted]auth[/]")
-    parts.append(f"[verdict.whitelisted]{wl}[/] [muted]whitelist[/]")
+    # Legend lists only glyph-bearing signals (in_legend). UNKNOWN, no-record,
+    # and n/a render as plain words in the table (self-explanatory), so they
+    # are intentionally omitted.
+    parts = [
+        f"[{style}]{asc if ascii_only else sym}[/] [muted]{word}[/]"
+        for sym, asc, style, word, _desc, in_legend in _GLYPH_ROWS
+        if in_legend
+    ]
     console.print("  " + "  ".join(parts), highlight=False)
 
 
@@ -252,34 +270,6 @@ def render_glyph_reference(console: Console) -> None:
     with its unicode form, ASCII fallback, and a one-line meaning — the single
     place a first-time user can decode the whole table vocabulary.
     """
-    rows = [
-        (verdict_glyph(Verdict.MALICIOUS),  verdict_glyph(Verdict.MALICIOUS, ascii_only=True),
-         "verdict.malicious",  "malicious",
-         "Confirmed malicious — authoritative blocklist hit or ≥ 30% weighted vote."),
-        (verdict_glyph(Verdict.SUSPICIOUS), verdict_glyph(Verdict.SUSPICIOUS, ascii_only=True),
-         "verdict.suspicious", "suspicious",
-         "Flagged by some providers but below the malicious threshold."),
-        (verdict_glyph(Verdict.CLEAN),      verdict_glyph(Verdict.CLEAN, ascii_only=True),
-         "verdict.clean",      "clean",
-         "No provider flagged the IOC."),
-        ("unknown", "unknown", "verdict.unknown", "unknown",
-         "Fewer than min-coverage providers responded — an honest ‘don't know’."),
-        (verdict_glyph(Verdict.ERROR),      verdict_glyph(Verdict.ERROR, ascii_only=True),
-         "verdict.error",      "error",
-         "Provider call failed (network, parse, or 5xx)."),
-        (CELL_UNKNOWN, CELL_UNKNOWN_ASCII, "verdict.unknown", "inconclusive",
-         "Provider responded but could not determine a verdict."),
-        (CELL_NO_RECORD, CELL_NO_RECORD_ASCII, "muted", "no record",
-         "Provider ran and saw nothing — counts as clean."),
-        (CELL_RATE_LIMITED, CELL_RATE_LIMITED_ASCII, "verdict.suspicious", "rate-limit",
-         "Provider returned HTTP 429 — retryable."),
-        (CELL_AUTH_FAIL, CELL_AUTH_FAIL_ASCII, "verdict.error", "auth",
-         "Provider auth failed (401/403) — fix the API key."),
-        ("n/a", "n/a", "muted", "n/a",
-         "Provider doesn't support this IOC type."),
-        (whitelist_glyph(), whitelist_glyph(ascii_only=True), "verdict.whitelisted", "whitelist",
-         "IOC is in the bundled/Tranco whitelist; verdict clamped to clean."),
-    ]
     t = Table(
         box=box.ASCII,
         show_header=True,
@@ -291,7 +281,7 @@ def render_glyph_reference(console: Console) -> None:
     t.add_column("ASCII", justify="center")
     t.add_column("Meaning", no_wrap=True)
     t.add_column("Description")
-    for sym, asc, style, meaning, desc in rows:
+    for sym, asc, style, meaning, desc, _in_legend in _GLYPH_ROWS:
         t.add_row(f"[{style}]{_escape(sym)}[/]", _escape(asc),
                   f"[{style}]{meaning}[/]", f"[muted]{desc}[/]")
     console.print(t)

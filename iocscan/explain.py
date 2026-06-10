@@ -24,7 +24,7 @@ from iocscan.core.verdict import AUTHORITATIVE, WEIGHTS, aggregate, coverage
 from iocscan.providers import ALL_PROVIDERS
 from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
 from iocscan.ui.console import make_console
-from iocscan.ui.glyph import verdict_glyph
+from iocscan.ui.glyph import verdict_label
 
 # Cap raw response so a chatty provider can't drown the panel.
 _RAW_LIMIT = 500
@@ -61,7 +61,6 @@ def _render_raw(raw: object) -> list[str]:
 def _provider_panel(
     result: ProviderResult, provider: Provider, ioc: str, ioc_type: IOCType,
 ) -> Panel:
-    glyph = verdict_glyph(result.verdict, ascii_only=False)
     # Provider-controlled strings (score, error, raw) are escaped before
     # being handed to rich — a hostile WHOIS field could otherwise smuggle
     # `[link=file://…]` or `[red]` markup into the panel.
@@ -89,10 +88,10 @@ def _provider_panel(
     if result.raw is not None:
         lines.extend(_render_raw(result.raw))
 
-    verdict_label = f"{glyph} {result.verdict.value}" if glyph else result.verdict.value
+    label = verdict_label(result.verdict, ascii_only=False)
     return Panel(
         "\n".join(lines),
-        title=f"{provider.name}  {verdict_label}",
+        title=f"{provider.name}  {label}",
         expand=False,
     )
 
