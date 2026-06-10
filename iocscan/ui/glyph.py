@@ -37,12 +37,27 @@ VERDICT_GLYPH_ASCII: dict[Verdict, str] = {
     Verdict.ERROR:      "[x]",
 }
 
+# Rich theme-style key per verdict — shared by the table and the summary footer.
+VERDICT_STYLES: dict[Verdict, str] = {
+    Verdict.MALICIOUS:  "verdict.malicious",
+    Verdict.SUSPICIOUS: "verdict.suspicious",
+    Verdict.CLEAN:      "verdict.clean",
+    Verdict.UNKNOWN:    "verdict.unknown",
+    Verdict.ERROR:      "verdict.error",
+}
+
 WHITELIST_GLYPH = "⚑"
 WHITELIST_GLYPH_ASCII = "[WL]"
 
 
 def verdict_glyph(v: Verdict, *, ascii_only: bool = False) -> str:
     return (VERDICT_GLYPH_ASCII if ascii_only else VERDICT_GLYPH)[v]
+
+
+def verdict_label(v: Verdict, *, ascii_only: bool = False) -> str:
+    """Glyph + word, or just the word when the verdict has no glyph (UNKNOWN)."""
+    glyph = verdict_glyph(v, ascii_only=ascii_only)
+    return f"{glyph} {v.value}" if glyph else v.value
 
 
 def whitelist_glyph(*, ascii_only: bool = False) -> str:

@@ -19,16 +19,7 @@ from rich.console import Console
 
 from iocscan.core.scan import ScanResult
 from iocscan.providers.base import IOCType, Verdict
-from iocscan.ui.glyph import verdict_glyph
-
-
-VERDICT_STYLES = {
-    Verdict.MALICIOUS:  "verdict.malicious",
-    Verdict.SUSPICIOUS: "verdict.suspicious",
-    Verdict.CLEAN:      "verdict.clean",
-    Verdict.UNKNOWN:    "verdict.unknown",
-    Verdict.ERROR:      "verdict.error",
-}
+from iocscan.ui.glyph import VERDICT_STYLES, verdict_glyph
 
 
 def render_summary(
