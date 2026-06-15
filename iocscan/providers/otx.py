@@ -10,6 +10,12 @@ from iocscan.providers.base import HASH_TYPES, IOCType, Provider, ProviderResult
 
 BASE = "https://otx.alienvault.com/api/v1/indicators"
 
+# OTX's canonical whitelist sources. We trust only these in the response's
+# "validation" list — a spoofed/MitM response could otherwise inject an
+# arbitrary entry to force CLEAN and suppress a malicious verdict (OTX votes
+# with weight 2 in aggregation).
+_TRUSTED_VALIDATION_SOURCES = {"majestic", "alexa", "whitelist"}
+
 
 class OTX(Provider):
     name = "otx"
@@ -45,7 +51,13 @@ class OTX(Provider):
             # OTX's own validation list (majestic / alexa / whitelist) marks the
             # indicator as known-good. It wins over pulse count: popular legit
             # domains accrue pulses from phishing reports that impersonate them.
-            if data.get("validation"):
+            # Trust only canonical sources so a spoofed response can't inject an
+            # arbitrary entry to force CLEAN.
+            validation = data.get("validation")
+            if isinstance(validation, list) and any(
+                isinstance(v, dict) and v.get("source") in _TRUSTED_VALIDATION_SOURCES
+                for v in validation
+            ):
                 return ProviderResult(self.name, Verdict.CLEAN, "whitelisted", data, None, latency)
             count = int(data.get("pulse_info", {}).get("count", 0))
         except (ValueError, KeyError):
