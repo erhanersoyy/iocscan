@@ -42,6 +42,11 @@ class OTX(Provider):
             return ProviderResult(self.name, Verdict.ERROR, "", None, f"{resp.status_code}", latency)
         try:
             data = resp.json()
+            # OTX's own validation list (majestic / alexa / whitelist) marks the
+            # indicator as known-good. It wins over pulse count: popular legit
+            # domains accrue pulses from phishing reports that impersonate them.
+            if data.get("validation"):
+                return ProviderResult(self.name, Verdict.CLEAN, "whitelisted", data, None, latency)
             count = int(data.get("pulse_info", {}).get("count", 0))
         except (ValueError, KeyError):
             return ProviderResult(self.name, Verdict.ERROR, "", None, "parse error", latency)
