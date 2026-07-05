@@ -10,6 +10,22 @@ from iocscan.providers.base import HASH_TYPES, IOCType, Provider, ProviderResult
 
 BASE = "https://www.virustotal.com/api/v3"
 
+# Engines with a well-documented false-positive record on domain/URL verdicts.
+# When at most 2 engines flag an IOC and ALL of them are in this set, the
+# provider downgrades SUSPICIOUS to CLEAN and notes it in `details` instead —
+# a lone ADMINUSLabs/CRDF hit is overwhelmingly noise, not signal.
+LOW_REPUTATION_ENGINES = {
+    "ADMINUSLabs",
+    "AlphaSOC",
+    "CRDF",
+    "Cyble",
+    "Forcepoint ThreatSeeker",
+    "Fortinet",
+    "Lionic",
+    "Seclookup",
+    "Webroot",
+}
+
 
 class VirusTotal(Provider):
     name = "virustotal"
@@ -48,7 +64,8 @@ class VirusTotal(Provider):
             return ProviderResult(self.name, Verdict.ERROR, "", None, f"{resp.status_code}", latency)
         try:
             data = resp.json()
-            stats = data["data"]["attributes"]["last_analysis_stats"]
+            attrs = data["data"]["attributes"]
+            stats = attrs["last_analysis_stats"]
         except (ValueError, KeyError):
             return ProviderResult(self.name, Verdict.ERROR, "", None, "parse error", latency)
         mal = int(stats.get("malicious", 0))
@@ -62,7 +79,17 @@ class VirusTotal(Provider):
             v = Verdict.SUSPICIOUS
         else:
             v = Verdict.CLEAN
-        return ProviderResult(self.name, v, score, data, None, latency)
+        details: tuple[str, ...] = ()
+        if v == Verdict.SUSPICIOUS and mal + susp <= 2:
+            results = attrs.get("last_analysis_results") or {}
+            flaggers = sorted(
+                name for name, r in results.items()
+                if r.get("category") in ("malicious", "suspicious")
+            )
+            if flaggers and all(f in LOW_REPUTATION_ENGINES for f in flaggers):
+                v = Verdict.CLEAN
+                details = (f"low-reputation engines detected: {', '.join(flaggers)}",)
+        return ProviderResult(self.name, v, score, data, None, latency, details)
 
     def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
         if ioc_type == IOCType.IP:
