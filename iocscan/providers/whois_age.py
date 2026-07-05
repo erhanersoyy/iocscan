@@ -28,9 +28,15 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+import tldextract
 
 from iocscan.core.config import Config
 from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
+
+# Snapshot-only PSL: empty `suffix_list_urls` + `cache_dir=None` mean this
+# never fetches or caches at runtime — only the snapshot bundled in the
+# package. Used by _registrable_domain.
+_EXTRACT = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None)
 
 PORT = 43
 _QUERY_TIMEOUT = 5.0
@@ -83,6 +89,7 @@ WHOIS_SERVERS = {
     # .tr registry moved from METU NIC to TRABIS (BTK) in Sep 2022; the old
     # whois.nic.tr host no longer resolves.
     "tr":     "whois.trabis.gov.tr",
+    "top":    "whois.nic.top",
     "xyz":    "whois.nic.xyz",
     "online": "whois.nic.online",
     "site":   "whois.nic.site",
@@ -200,7 +207,12 @@ class WhoisAge(Provider):
         if server is None:
             latency = int((time.perf_counter() - start) * 1000)
             return ProviderResult(self.name, Verdict.UNKNOWN, "—", None, f"unknown TLD: .{tld}", latency)
-        text, exc_name = await _whois_query(server, ioc)
+        # WHOIS records live at the registrable-domain level, so a subdomain
+        # must be queried as its parent (sub.example.com -> example.com) or the
+        # registry returns "no match". The server stays keyed by the last label
+        # above, which is correct for every WHOIS_SERVERS entry.
+        query = _registrable_domain(ioc)
+        text, exc_name = await _whois_query(server, query)
         if text is None:
             return _err(self.name, f"network: {exc_name}", start)
         latency = int((time.perf_counter() - start) * 1000)
@@ -234,6 +246,9 @@ class WhoisAge(Provider):
         # carries no creation date — the user still wants to see registrar
         # / expiry / nameservers etc.
         detail_lines = [f"server: {server}"]
+        # When a subdomain was reduced, show which domain we actually queried.
+        if query != ioc:
+            detail_lines.append(f"queried: {query}")
         for label, _ in _WHOIS_DOMAIN_DISPLAY:
             value = display.get(label)
             if value:
@@ -321,6 +336,19 @@ async def _whois_query(server: str, query: str) -> tuple[str | None, str]:
         except Exception:
             pass
     return body.decode("utf-8", errors="replace"), ""
+
+
+def _registrable_domain(host: str) -> str:
+    """Reduce a hostname to its registrable domain (public suffix + one label)
+    via the bundled PSL snapshot: `sub.example.com` -> `example.com`,
+    `a.b.example.co.uk` -> `example.co.uk`. Falls back to the input unchanged
+    when there is no registrable part (unknown suffix, or the host is itself a
+    public suffix).
+    """
+    ext = _EXTRACT(host)
+    if ext.domain and ext.suffix:
+        return f"{ext.domain}.{ext.suffix}"
+    return host
 
 
 def _extract_refer(text: str) -> str | None:

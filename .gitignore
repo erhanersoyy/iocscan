@@ -32,3 +32,6 @@ installed_packages.md
 
 github_cover_1280x640.png
 test_output.png
+
+# Test suite kept local-only (excluded from the published repo)
+tests/

@@ -1,3 +1,4 @@
 httpx[http2]>=0.27,<0.29
 rich>=13.7,<15
 tomli-w>=1.0,<2
+tldextract>=5,<6

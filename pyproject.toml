@@ -35,6 +35,11 @@ dependencies = [
     "httpx[http2]>=0.27,<0.29",
     "rich>=13.7,<15",
     "tomli-w>=1.0,<2",
+    # Public Suffix List parsing to reduce a hostname to its registrable
+    # domain before a WHOIS query (WHOIS records live at the registrable
+    # level, not per-subdomain). Configured snapshot-only in whois_age.py
+    # so it never touches the network at runtime.
+    "tldextract>=5,<6",
 ]
 
 [project.urls]
