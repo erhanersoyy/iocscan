@@ -81,6 +81,13 @@ class Cache:
         return out
 
     def put(self, ioc: str, results: list[ProviderResult]) -> None:
+        # ERROR is a transient condition (timeout, 429, 5xx), not knowledge
+        # about the IOC. Caching it would suppress re-querying the provider
+        # for the whole TTL, because _run_scan skips providers with any
+        # cached row.
+        results = [r for r in results if r.verdict is not Verdict.ERROR]
+        if not results:
+            return
         now = int(time.time())
         with self._conn:
             self._conn.executemany(
