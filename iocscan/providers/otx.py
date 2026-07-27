@@ -19,7 +19,7 @@ _TRUSTED_VALIDATION_SOURCES = {"majestic", "alexa", "whitelist"}
 
 class OTX(Provider):
     name = "otx"
-    supports = {IOCType.IP, IOCType.DOMAIN, *HASH_TYPES}
+    supports = {IOCType.IP, IOCType.DOMAIN, IOCType.URL, *HASH_TYPES}
     requires_key = True
     max_rps = 5.0
 
@@ -31,9 +31,15 @@ class OTX(Provider):
             path_prefix = "IPv4"
         elif ioc_type == IOCType.DOMAIN:
             path_prefix = "domain"
+        elif ioc_type == IOCType.URL:
+            path_prefix = "url"
         else:
             path_prefix = "file"   # hash variants
-        url = f"{BASE}/{path_prefix}/{ioc}/general"
+        # URL indicators contain slashes/query chars — percent-encode them
+        # into a single path segment (same encoding permalink() uses). Other
+        # IOC types are charset-validated upstream and safe to embed raw.
+        ioc_path = quote(ioc, safe="") if ioc_type == IOCType.URL else ioc
+        url = f"{BASE}/{path_prefix}/{ioc_path}/general"
         start = time.perf_counter()
         try:
             resp = await client.get(url, headers={"X-OTX-API-KEY": key})
