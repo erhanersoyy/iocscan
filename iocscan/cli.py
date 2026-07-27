@@ -260,7 +260,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     # Route to subcommand parser or scan parser based on first positional arg
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
-    first_pos = next((a for a in raw_argv if not a.startswith("-")), None)
+    # Subcommands are always the first token. Scanning argv for the first
+    # non-flag token misroutes flag *values* — `iocscan -f providers` is a
+    # scan of a file literally named "providers", not the subcommand.
+    first_pos = raw_argv[0] if raw_argv and not raw_argv[0].startswith("-") else None
 
     if first_pos in _SUBCOMMANDS:
         parser = _build_arg_parser()
@@ -293,6 +296,15 @@ def main(argv: list[str] | None = None) -> int:
         parser = _build_scan_parser()
         args = parser.parse_args(raw_argv)
         args.cmd = None
+        # --json is a legacy alias for --format json; combining it with an
+        # explicit non-default --format is contradictory. Reject during arg
+        # validation — before any provider is queried and quota spent.
+        if args.json and args.format != "table":
+            print(
+                f"error: --json conflicts with --format {args.format}; use one or the other",
+                file=sys.stderr,
+            )
+            return 3
 
     # Root stays at WARNING even under --debug: raising it to DEBUG makes
     # third-party libs (notably hpack) dump every HTTP/2 header, leaking the
@@ -465,16 +477,10 @@ async def _run_scan(parsed, config, args) -> int:
 
         # Resolve effective output format. --quiet (TSV, no noise) wins over
         # everything; otherwise legacy --json maps to --format json.
-        # --json with a non-default --format is a contradiction — reject it
-        # so the user gets a clear error rather than one silently winning.
         fmt = args.format
         if args.json:
-            if args.format != "table":
-                print(
-                    f"error: --json conflicts with --format {args.format}; use one or the other",
-                    file=sys.stderr,
-                )
-                return 3
+            # The --json / --format contradiction was already rejected during
+            # arg validation in main(); only the alias mapping remains here.
             fmt = "json"
             if not args.quiet:
                 print("warning: --json is deprecated; use --format json", file=sys.stderr)
