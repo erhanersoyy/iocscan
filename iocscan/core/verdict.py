@@ -4,8 +4,13 @@ from iocscan.providers.base import ProviderResult, Verdict
 
 MIN_COVERAGE_DEFAULT = 3
 
-# Authoritative blocklists — single MALICIOUS = final MALICIOUS
-AUTHORITATIVE = {"spamhaus", "feodo", "malwarebazaar"}
+# Authoritative blocklists — single MALICIOUS = final MALICIOUS.
+# Membership criterion: the feed lists an IOC only after curated verification
+# (a served payload, a confirmed C2, a submitted sample), not by heuristic
+# scoring. URLhaus is the only such source that covers URLs and domains —
+# without it those IOC types have no authoritative path at all, and the
+# largest single weight (2) cannot reach the 30% bar in a 7-weight URL pool.
+AUTHORITATIVE = {"spamhaus", "feodo", "malwarebazaar", "urlhaus"}
 
 # Tier 2 weights (multi-engine / multi-source providers count more)
 WEIGHTS = {

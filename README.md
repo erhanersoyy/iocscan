@@ -205,9 +205,9 @@ iocscan ships with 17 providers. **Verdict** providers contribute a vote to the 
 
 | Provider | Role | Key | IOC types | Official site |
 |---|---|---|---|---|
-| URLhaus | Verdict | Auth-Key (free) | IP, domain, URL | <https://urlhaus.abuse.ch> |
+| URLhaus | Verdict (authoritative) | Auth-Key (free) | IP, domain, URL | <https://urlhaus.abuse.ch> |
 | ThreatFox | Verdict | Auth-Key (free) | IP, domain, URL, hash | <https://threatfox.abuse.ch> |
-| MalwareBazaar | Verdict | Auth-Key (free) | hash | <https://bazaar.abuse.ch> |
+| MalwareBazaar | Verdict (authoritative) | Auth-Key (free) | hash | <https://bazaar.abuse.ch> |
 | YARAify | Verdict | Auth-Key (free) | hash | <https://yaraify.abuse.ch> |
 | CIRCL Hashlookup | Verdict | none | hash | <https://hashlookup.circl.lu> |
 | Feodo Tracker | Verdict (authoritative) | none | IP | <https://feodotracker.abuse.ch> |
@@ -354,8 +354,8 @@ echo "login-secure[.]bank-update[.]top" | python -m iocscan
 
 ## Verdict logic (in short)
 
-1. If fewer than `min_coverage` providers (default 3) respond non-error/non-unknown → `unknown`.
-2. If any **authoritative** provider (Spamhaus DROP, Feodo Tracker) returns `malicious` → final `malicious`.
+1. If any **authoritative** provider (URLhaus, Spamhaus DROP, Feodo Tracker, MalwareBazaar) returns `malicious` → final `malicious`, regardless of coverage.
+2. Otherwise, if fewer than `min_coverage` providers (default 3) respond non-error/non-unknown → `unknown`.
 3. Otherwise weighted vote at ≥30%: VirusTotal and OTX count as 2; others count as 1.
 4. Whitelist override: if the IOC is a bundled-whitelist or Tranco top-1K domain, `malicious`/`suspicious` is clamped to `clean` (and the table marks it as whitelisted).
 
