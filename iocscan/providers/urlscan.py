@@ -62,7 +62,11 @@ class URLScan(Provider):
                 f"{total} scans ({malicious_count} malicious)",
                 data, None, latency,
             )
-        return ProviderResult(self.name, Verdict.SUSPICIOUS, f"{total} scans", data, None, latency)
+        # Scan volume is popularity, not risk — with zero malicious verdicts
+        # across all returned scans this is evidence of a benign URL.
+        return ProviderResult(
+            self.name, Verdict.CLEAN, f"{total} scans (0 malicious)", data, None, latency,
+        )
 
     def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
         if ioc_type == IOCType.URL:
