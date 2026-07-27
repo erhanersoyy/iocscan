@@ -21,6 +21,10 @@ from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, e
 HOST = "whois.cymru.com"
 PORT = 43
 _QUERY_TIMEOUT = 5.0
+# Hard cap on a single response body. Team Cymru rows are <200 bytes; 2 MB
+# is generous while blocking a hostile/MitM'd peer from streaming unbounded
+# data within the read timeout (same guard as whois_age._MAX_BODY).
+_MAX_BODY = 2 * 1024 * 1024
 
 
 class TeamCymru(Provider):
@@ -41,7 +45,7 @@ class TeamCymru(Provider):
         try:
             writer.write(f" -v {ioc}\n".encode("ascii"))
             await writer.drain()
-            body = await asyncio.wait_for(reader.read(), timeout=_QUERY_TIMEOUT)
+            body = await asyncio.wait_for(reader.read(_MAX_BODY), timeout=_QUERY_TIMEOUT)
         except asyncio.TimeoutError:
             writer.close()
             return _err(self.name, "timeout", start)
