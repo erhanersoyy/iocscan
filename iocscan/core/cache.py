@@ -62,8 +62,12 @@ class Cache:
     def get(self, ioc: str) -> dict[str, ProviderResult]:
         cutoff = int(time.time()) - self.ttl
         rows = self._conn.execute(
+            # put() no longer writes ERROR rows (see below), but a DB written
+            # by a pre-fix version of iocscan can still hold them — without
+            # this filter a stale 'error' row would suppress re-querying that
+            # provider until it ages out of the TTL window.
             "SELECT provider, verdict, score, error, raw_json, latency_ms, details_json "
-            "FROM results WHERE ioc = ? AND fetched_at > ?",
+            "FROM results WHERE ioc = ? AND fetched_at > ? AND verdict != 'error'",
             (ioc, cutoff),
         ).fetchall()
         out: dict[str, ProviderResult] = {}
