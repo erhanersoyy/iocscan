@@ -75,15 +75,18 @@ class YARAify(Provider):
                     rules.append(rule)
             if rules:
                 details = tuple(f"rule: {r}" for r in rules[1:])
+                # A YARA match (often a generic/packer/informational rule) is
+                # "worth a look", not confirmed malware — vote SUSPICIOUS and
+                # let multi-engine providers carry the malicious signal.
                 return ProviderResult(
-                    self.name, Verdict.MALICIOUS, rules[0], data, None, latency, details=details
+                    self.name, Verdict.SUSPICIOUS, rules[0], data, None, latency, details=details
                 )
             if tasks:
                 # ok status, payload has tasks but no extractable rule names —
                 # still a hit; surface the task count so the user knows there
                 # is evidence in `raw` even without a named rule.
                 return ProviderResult(
-                    self.name, Verdict.MALICIOUS, "yara match", data, None, latency,
+                    self.name, Verdict.SUSPICIOUS, "yara match", data, None, latency,
                     details=(f"tasks: {len(tasks)} (no named rules)",),
                 )
         return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency)
