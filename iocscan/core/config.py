@@ -52,7 +52,11 @@ class Config:
         # with_suffix would strip ".toml"; append instead so an orphaned tmp
         # from a crashed write is recognisably "<target>.tmp".
         tmp = target.parent / (target.name + ".tmp")
-        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        # Remove any pre-existing tmp (could be a planted symlink) and open
+        # with O_EXCL, which never follows symlinks — otherwise a link at
+        # <target>.tmp would redirect this write over an arbitrary file.
+        tmp.unlink(missing_ok=True)
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "wb") as f:
             f.write(tomli_w.dumps(payload).encode("utf-8"))
         os.chmod(tmp, 0o600)
