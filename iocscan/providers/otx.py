@@ -50,6 +50,11 @@ class OTX(Provider):
             return ProviderResult(self.name, Verdict.ERROR, "", None, "429 rate limit", latency)
         if resp.status_code in (401, 403):
             return ProviderResult(self.name, Verdict.ERROR, "", None, "auth failed", latency)
+        if resp.status_code == 404:
+            # OTX returns 404 for indicators it has never seen (observed for
+            # hash lookups; URL lookups return 200 with pulse count 0 —
+            # verified live 2026-07). No data is not an error.
+            return ProviderResult(self.name, Verdict.UNKNOWN, "—", None, None, latency)
         if resp.status_code >= 400:
             return ProviderResult(self.name, Verdict.ERROR, "", None, f"{resp.status_code}", latency)
         try:
