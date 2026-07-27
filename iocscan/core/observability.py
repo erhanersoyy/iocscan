@@ -31,6 +31,22 @@ CREATE INDEX IF NOT EXISTS observability_provider_event_at
   ON observability(provider, event_at DESC);
 """
 
+# Health lookback is user-configurable (`iocscan health --days N`), so keep a
+# generous window; beyond it rows only cost disk and scan time.
+RETENTION_SECONDS = 90 * 86400
+
+
+def prune(conn: sqlite3.Connection, *, retention_seconds: int = RETENTION_SECONDS) -> None:
+    """Delete observations older than the retention window.
+
+    Callers wrap this in their own best-effort try/except — maintenance
+    must never block a scan.
+    """
+    conn.execute(
+        "DELETE FROM observability WHERE event_at < ?",
+        (int(time.time()) - retention_seconds,),
+    )
+
 
 def record_results(conn: sqlite3.Connection, results: Iterable[ProviderResult]) -> None:
     """Append one row per result. Best-effort; sqlite errors are swallowed.

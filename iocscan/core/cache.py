@@ -50,6 +50,19 @@ class Cache:
         # exists before the first `record_observations` write.
         self._conn.executescript(_obs.SCHEMA)
         self._conn.commit()
+        # Rows past the TTL are already invisible to get(); delete them so the
+        # DB doesn't grow without bound. Observability ages out on the same
+        # sweep with its own, longer retention. Best-effort: maintenance must
+        # never block a scan.
+        try:
+            with self._conn:
+                self._conn.execute(
+                    "DELETE FROM results WHERE fetched_at <= ?",
+                    (int(time.time()) - self.ttl,),
+                )
+                _obs.prune(self._conn)
+        except sqlite3.Error:
+            pass
         # WAL mode creates sibling -wal/-shm files; lock those down too so
         # they don't end up world-readable under a permissive umask.
         for suffix in ("", "-wal", "-shm"):
