@@ -252,7 +252,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     health_p.add_argument(
         "--days", type=int, default=7, metavar="N",
-        help="lookback window in days (default: 7)",
+        help="lookback window in days (default: 7; observations are pruned after 90 days)",
     )
     return p
 
