@@ -19,6 +19,13 @@ def _ioc_matches(entry_ioc: str, ioc: str, ioc_type: IOCType) -> bool:
     also accept "<ip>:<port>" entries. Comparison is case-insensitive —
     scheme/host of our normalized IOCs are already lowercase and hashes
     are hex.
+
+    This is deliberately exact, not substring, matching: a URL-type entry
+    hosted on the queried domain, or a trailing-slash / path variant of the
+    queried URL, will no longer flag the IOC (a false negative). Do not
+    "fix" this back into substring matching — that is what caused false
+    positives on every brand lookalike (e.g. "guard-google.com" flagging
+    "google.com"); see test_lookalike_results_are_not_malicious.
     """
     entry_low, ioc_low = entry_ioc.lower(), ioc.lower()
     if entry_low == ioc_low:
