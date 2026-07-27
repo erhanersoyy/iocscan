@@ -38,6 +38,10 @@ class Feodo(Provider):
             return _err(self.name, f"network: {e.__class__.__name__}", start)
         except ValueError as e:
             return _err(self.name, str(e), start)
+        except (KeyError, TypeError) as e:
+            # _load re-raises these when a feed entry is malformed (missing
+            # "ip_address" / non-dict entry); the backoff is already armed.
+            return _err(self.name, f"feed parse: {e.__class__.__name__}", start)
         latency = int((time.perf_counter() - start) * 1000)
         if ioc in blocklist:
             entry = blocklist[ioc]
