@@ -27,13 +27,17 @@ def aggregate(
         r for r in voting
         if r.verdict not in (Verdict.ERROR, Verdict.UNKNOWN)
     ]
-    if len(responding) < min_coverage:
-        return Verdict.UNKNOWN
 
-    # Tier 1: authoritative blocklist hit
+    # Tier 1: authoritative blocklist hit. Checked BEFORE the coverage gate —
+    # curated-list membership is decisive on its own, whereas min_coverage
+    # exists to block verdicts built on thin heuristic evidence. The
+    # whitelist clamp (applied after aggregation) still guards the FP side.
     for r in responding:
         if r.provider in AUTHORITATIVE and r.verdict == Verdict.MALICIOUS:
             return Verdict.MALICIOUS
+
+    if len(responding) < min_coverage:
+        return Verdict.UNKNOWN
 
     # Tier 2: weighted voting at >=30% threshold
     mal_w = sum(WEIGHTS.get(r.provider, 1) for r in responding if r.verdict == Verdict.MALICIOUS)
