@@ -12,6 +12,20 @@ from iocscan.providers.base import HASH_TYPES, IOCType, Provider, ProviderResult
 ENDPOINT = "https://threatfox-api.abuse.ch/api/v1/"
 
 
+def _ioc_matches(entry_ioc: str, ioc: str, ioc_type: IOCType) -> bool:
+    """True when a ThreatFox entry refers to exactly the queried IOC.
+
+    ThreatFox stores IP IOCs in "ip:port" form, so a bare-IP query must
+    also accept "<ip>:<port>" entries. Comparison is case-insensitive —
+    scheme/host of our normalized IOCs are already lowercase and hashes
+    are hex.
+    """
+    entry_low, ioc_low = entry_ioc.lower(), ioc.lower()
+    if entry_low == ioc_low:
+        return True
+    return ioc_type == IOCType.IP and entry_low.startswith(f"{ioc_low}:")
+
+
 class ThreatFox(Provider):
     name = "threatfox"
     supports = {IOCType.IP, IOCType.DOMAIN, IOCType.URL, *HASH_TYPES}
@@ -42,10 +56,17 @@ class ThreatFox(Provider):
             data = resp.json()
         except ValueError:
             return ProviderResult(self.name, Verdict.ERROR, "", None, "parse error", latency)
-        if data.get("query_status") == "ok" and data.get("data"):
-            entry = data["data"][0]
-            malware = entry.get("malware", "unknown")
-            return ProviderResult(self.name, Verdict.MALICIOUS, malware, data, None, latency)
+        if data.get("query_status") == "ok" and isinstance(data.get("data"), list):
+            # search_ioc is a substring search: querying "google.com" returns
+            # lookalike IOCs such as "guard-google.com". Only an entry whose
+            # `ioc` field IS the queried indicator may vote MALICIOUS.
+            matches = [
+                e for e in data["data"]
+                if isinstance(e, dict) and _ioc_matches(e.get("ioc") or "", ioc, ioc_type)
+            ]
+            if matches:
+                malware = matches[0].get("malware", "unknown")
+                return ProviderResult(self.name, Verdict.MALICIOUS, malware, data, None, latency)
         return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency)
 
     def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
