@@ -3,14 +3,21 @@
 Every supplied IOC goes into the query regardless of verdict or whitelist
 status — triage belongs to the table/JSON view; hunt is a verbatim
 IOC → query translator. Empty input yields a single no-op comment.
+
+Exception: suricata-ip-rules is deployed detection content, not a hunt
+query, so it emits rules only for malicious/suspicious IOCs.
 """
 from __future__ import annotations
 
 from iocscan.core.scan import ScanResult
-from iocscan.providers.base import HASH_TYPES, IOCType
+from iocscan.providers.base import HASH_TYPES, IOCType, Verdict
 
 
 def render_hunt(scans: list[ScanResult], fmt: str) -> str:
+    # Suricata output is deployed detection content, not a hunt query, so it
+    # needs the verdicts — every other emitter only needs the IOC strings.
+    if fmt == "suricata-ip-rules":
+        return _suricata_rules(scans)
     emitter = _EMITTERS.get(fmt)
     if emitter is None:
         raise ValueError(f"unknown hunt format: {fmt!r}")
@@ -224,15 +231,52 @@ def _elastic_lucene(by: dict[IOCType, list[str]]) -> str:
     return " OR ".join(clauses) or "// no IOCs to hunt"
 
 
-def _suricata(by: dict[IOCType, list[str]]) -> str:
-    """One `alert ip` rule per malicious IP. SID auto-incrementing from 9000000."""
-    ips = by.get(IOCType.IP, [])
-    if not ips:
-        return "# suricata-ip-rules: no IPs to hunt"
+# Local/site rule range. Suricata reserves 1000000-1999999 for local rules and
+# most distributions leave 9000000+ free; bump this if it collides with your
+# own numbering.
+SID_BASE = 9000000
+
+# Suricata's standard classtypes: a confirmed hit is C2-grade, a suspicious one
+# is not strong enough to claim that.
+_CLASSTYPE = {
+    Verdict.MALICIOUS: "trojan-activity",
+    Verdict.SUSPICIOUS: "misc-activity",
+}
+
+
+def _rule_evidence(scan: ScanResult) -> str:
+    """Names of the providers that voted malicious, for the rule msg.
+
+    An analyst reviewing a fired alert needs to know which feed put the IP in
+    the ruleset — 'iocscan said so' is not actionable.
+    """
+    names = [r.provider for r in scan.provider_results if r.verdict == Verdict.MALICIOUS]
+    return ", ".join(names[:3]) if names else "no single-provider hit"
+
+
+def _suricata_rules(scans: list[ScanResult]) -> str:
+    """One `alert ip` rule per malicious/suspicious IP.
+
+    Clean, unknown, and whitelisted IOCs are deliberately excluded: this output
+    is loaded into a sensor, and alerting on an IP the tool itself scored clean
+    produces false positives under a msg that contradicts the verdict.
+    """
+    ip_scans = [s for s in scans if s.ioc_type == IOCType.IP]
+    actionable = [s for s in ip_scans if s.verdict in _CLASSTYPE]
+    if not actionable:
+        skipped = len(ip_scans)
+        if not skipped:
+            return "# suricata-ip-rules: no IPs to hunt"
+        return (
+            f"# suricata-ip-rules: no malicious/suspicious IPs "
+            f"({skipped} IP{'s' if skipped != 1 else ''} skipped)"
+        )
     return "\n".join(
-        f'alert ip $HOME_NET any -> {ip} any '
-        f'(msg:"iocscan: malicious IP {ip}"; sid:{sid}; rev:1;)'
-        for sid, ip in enumerate(ips, start=9000000)
+        f'alert ip $HOME_NET any -> {s.ioc} any '
+        f'(msg:"iocscan {s.verdict.value} IP {s.ioc} ({_rule_evidence(s)})"; '
+        f'classtype:{_CLASSTYPE[s.verdict]}; metadata:source iocscan; '
+        f'sid:{sid}; rev:1;)'
+        for sid, s in enumerate(actionable, start=SID_BASE)
     )
 
 
@@ -243,7 +287,8 @@ _EMITTERS = {
     "crowdstrike-fql": _crowdstrike_fql,
     "elastic-eql": _elastic_eql,
     "elastic-lucene": _elastic_lucene,
-    "suricata-ip-rules": _suricata,
 }
 
-HUNT_FORMATS = tuple(_EMITTERS)
+# suricata-ip-rules is handled ahead of _EMITTERS in render_hunt (it needs the
+# verdicts, not just the IOC strings) but is still an offered format.
+HUNT_FORMATS = tuple(_EMITTERS) + ("suricata-ip-rules",)
