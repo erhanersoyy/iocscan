@@ -315,6 +315,24 @@ class WhoisAge(Provider):
         )
 
 
+async def _read_to_eof(reader: asyncio.StreamReader) -> bytes:
+    """Read until EOF or `_MAX_BODY` bytes, whichever comes first.
+
+    `StreamReader.read(n)` returns as soon as ANY bytes are buffered — it is
+    NOT read-to-EOF like a bare `read()` — so a WHOIS reply split across
+    multiple TCP segments would otherwise be silently truncated to the
+    first packet. The overall `asyncio.wait_for(..., timeout=...)` at the
+    call site still bounds the total time spent looping here.
+    """
+    body = bytearray()
+    while len(body) < _MAX_BODY:
+        chunk = await reader.read(_MAX_BODY - len(body))
+        if not chunk:
+            break
+        body.extend(chunk)
+    return bytes(body)
+
+
 async def _whois_query(server: str, query: str) -> tuple[str | None, str]:
     """Run one TCP-43 round-trip. Returns (text, exception_class_name)."""
     try:
@@ -326,7 +344,7 @@ async def _whois_query(server: str, query: str) -> tuple[str | None, str]:
     try:
         writer.write(f"{query}\r\n".encode("ascii"))
         await writer.drain()
-        body = await asyncio.wait_for(reader.read(_MAX_BODY), timeout=_QUERY_TIMEOUT)
+        body = await asyncio.wait_for(_read_to_eof(reader), timeout=_QUERY_TIMEOUT)
     except asyncio.TimeoutError:
         return None, "TimeoutError"
     finally:
