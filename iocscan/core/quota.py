@@ -88,6 +88,11 @@ async def _probe_one(
 
 async def _probe_vt(config: Config, client: httpx.AsyncClient) -> QuotaResult:
     key = config.key_for("virustotal")
+    # The key doubles as the user id: users/{key}/overall_quotas is the only
+    # quota endpoint reachable with a free-tier key — there is no key-less
+    # self alias (users/me returns 200 but carries no quotas for free keys;
+    # users/me/overall_quotas is 403 — verified 2026-07). The key therefore
+    # appears in the URL path: never enable httpx URL logging on this path.
     url = f"https://www.virustotal.com/api/v3/users/{key}/overall_quotas"
     resp = await client.get(url, headers={"x-apikey": key})
     if resp.status_code != 200:
