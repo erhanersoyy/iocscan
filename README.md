@@ -361,11 +361,15 @@ echo "login-secure[.]bank-update[.]top" | python -m iocscan
 3. Otherwise weighted vote at ≥30%: VirusTotal and OTX count as 2; others count as 1.
 4. Whitelist override: if the IOC is a bundled-whitelist or Tranco top-1K domain, `malicious`/`suspicious` is clamped to `clean` (and the table marks it as whitelisted).
 
+A provider with no record of an IOC votes `unknown`, not `clean` — absence of evidence is not evidence of absence. For URLs this matters in practice: a URL nobody has ever seen (no URLhaus listing, no VirusTotal record, no OTX pulses, few urlscan scans) falls below `min_coverage` and comes back `unknown` (exit code `5`) rather than `clean` (exit `0`). Scripts that branch on the exit code for URL batches should treat `5` as "insufficient data", not "safe".
+
 ---
 
 ## Cache
 
-Results are cached at `~/.iocscan/cache.db` for 24 hours.
+Results are cached at `~/.iocscan/cache.db` for 24 hours. Cached rows keep the fetch time of the original lookup (`fetched_at` in JSON output, alongside `cached: true`), so a merged result set never claims to be fresher than it is.
+
+> **Upgrading:** run `iocscan cache clear` once after upgrading. Rows written by an older version were scored under older provider rules, and a cached verdict is replayed as-is until it expires.
 
 ```bash
 python -m iocscan --no-cache 8.8.8.8        # bypass cache for one run

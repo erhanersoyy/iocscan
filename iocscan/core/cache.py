@@ -113,7 +113,11 @@ class Cache:
                 "(ioc, provider, fetched_at, verdict, score, error, raw_json, latency_ms, details_json) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (ioc, r.provider, now, r.verdict.value, r.score, r.error,
+                    # Keep a cached row's original fetch time: _run_scan writes
+                    # the *merged* set back after every scan, so re-stamping
+                    # would both falsify the row's provenance and reset its TTL,
+                    # letting stale intel outlive the cap indefinitely.
+                    (ioc, r.provider, r.fetched_at or now, r.verdict.value, r.score, r.error,
                      json.dumps(r.raw) if r.raw is not None else None, r.latency_ms,
                      json.dumps(list(r.details)) if r.details else None)
                     for r in results

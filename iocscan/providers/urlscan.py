@@ -56,7 +56,11 @@ class URLScan(Provider):
         except (ValueError, TypeError):
             return ProviderResult(self.name, Verdict.ERROR, "", None, "parse error", latency)
         if total == 0:
-            return ProviderResult(self.name, Verdict.CLEAN, "—", data, None, latency)
+            # No search results at all is the weakest evidence there is —
+            # weaker than the 1..N-scan case below, so it cannot be CLEAN.
+            return ProviderResult(
+                self.name, Verdict.UNKNOWN, "0 scans (no record)", data, None, latency,
+            )
         malicious_count = sum(
             1 for r in results
             if (((r.get("verdicts") or {}).get("overall") or {}).get("malicious"))
