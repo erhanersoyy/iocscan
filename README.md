@@ -361,7 +361,9 @@ echo "login-secure[.]bank-update[.]top" | python -m iocscan
 3. Otherwise weighted vote at ≥30%: VirusTotal and OTX count as 2; others count as 1.
 4. Whitelist override: if the IOC is a bundled-whitelist or Tranco top-1K domain, `malicious`/`suspicious` is clamped to `clean` (and the table marks it as whitelisted).
 
-A provider with no record of an IOC votes `unknown`, not `clean` — absence of evidence is not evidence of absence. For URLs this matters in practice: a URL nobody has ever seen (no URLhaus listing, no VirusTotal record, no OTX pulses, few urlscan scans) falls below `min_coverage` and comes back `unknown` (exit code `5`) rather than `clean` (exit `0`). Scripts that branch on the exit code for URL batches should treat `5` as "insufficient data", not "safe".
+Record-based providers (VirusTotal, urlscan, OTX for URLs, hash lookups) vote `unknown` when they hold no record of an IOC — absence of evidence is not evidence of absence. Curated blocklists are different: "not listed" is a real observation there, so Feodo, Spamhaus, Tor, URLhaus and ThreatFox still cast a clean vote when they have no hit (the `— (no hit - clean)` cell above).
+
+For URLs this matters in practice: a URL nobody has ever seen (no URLhaus listing, no VirusTotal record, no OTX pulses, few urlscan scans) falls below `min_coverage` and comes back `unknown` (exit code `5`) rather than `clean` (exit `0`). Scripts that branch on the exit code for URL batches should treat `5` as "insufficient data", not "safe".
 
 ---
 

@@ -508,8 +508,14 @@ async def _run_scan(parsed, config, args) -> int:
         has_malicious = any(s.verdict == Verdict.MALICIOUS for s in scans)
         has_suspicious = any(s.verdict == Verdict.SUSPICIOUS for s in scans)
         all_unknown = all(s.verdict == Verdict.UNKNOWN for s in scans)
+        # `s.provider_results and ...` guards the vacuous case: with --only /
+        # --skip an IOC can end up with no applicable provider at all, and
+        # "every result errored" would be trivially true for an empty list —
+        # reporting exit 4 ("all providers failed, retry later") for a scan
+        # that never queried anything. That case is exit 5 (all unknown).
         all_errors = all(
-            all(r.verdict == Verdict.ERROR for r in s.provider_results)
+            s.provider_results
+            and all(r.verdict == Verdict.ERROR for r in s.provider_results)
             for s in scans
         )
         if all_errors:
