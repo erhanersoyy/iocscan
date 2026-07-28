@@ -26,6 +26,10 @@ class Tor(Provider):
     supports = {IOCType.IP}
     requires_key = False
     max_rps = 1.0
+    # Being a Tor exit is context, not a threat signal — the row is still
+    # shown (in the suspicious style, with its "tor exit" score) but must
+    # not vote or count toward coverage.
+    enrichment_only = True
 
     async def lookup(self, ioc: str, ioc_type: IOCType, client: httpx.AsyncClient, config: Config) -> ProviderResult:
         start = time.perf_counter()
