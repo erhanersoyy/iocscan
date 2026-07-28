@@ -437,6 +437,13 @@ async def _run_scan(parsed, config, args) -> int:
     cache_fresh = 0
     active_providers = _select_providers(ALL_PROVIDERS, args.only, args.skip)
     active_names = {p.name for p in active_providers}
+    # Stream JSONL as each IOC finishes so a long bulk run produces usable
+    # output immediately and a killed run keeps what it already found.
+    # --sort needs the whole batch before it can order it, so it opts out.
+    streaming = (
+        args.format == "jsonl" and not args.json and not args.quiet
+        and not args.links_only and args.sort == "input"
+    )
     start_wall = time.perf_counter()
     try:
         scans = []
@@ -492,6 +499,9 @@ async def _run_scan(parsed, config, args) -> int:
                     # skipped when the user explicitly disables persistence.
                     cache.record_observations(scan.provider_results)
                 scans.append(scan)
+                if streaming:
+                    from iocscan.ui.export import render_jsonl_line
+                    print(render_jsonl_line(scan, defang=args.defang), flush=True)
 
         elapsed_ms = int((time.perf_counter() - start_wall) * 1000)
 
@@ -548,7 +558,8 @@ async def _run_scan(parsed, config, args) -> int:
                 payload_str = json.dumps(apply_filter(payload, inc, exc), indent=2)
             print(payload_str)
         elif fmt in EXPORT_FORMATS:
-            print(render_export(scans_out, fmt, defang=args.defang))
+            if not streaming:      # streamed line-by-line as each IOC completed
+                print(render_export(scans_out, fmt, defang=args.defang))
         else:  # table
             console = make_console(ascii_only=args.ascii, theme=args.theme)
             if not console.is_terminal:

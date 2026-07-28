@@ -43,17 +43,23 @@ def _ioc(s: ScanResult, defang: bool) -> str:
     return to_defanged(s.ioc) if defang else s.ioc
 
 
+def render_jsonl_line(scan: ScanResult, *, defang: bool = False) -> str:
+    """Render one scan as a single JSONL record (no trailing newline).
+
+    Shared by the buffered renderer and the CLI's streaming path so the two
+    can never drift.
+    """
+    return json.dumps({
+        "ioc": _ioc(scan, defang),
+        "type": scan.ioc_type.value,
+        "verdict": scan.verdict.value,
+        "coverage": {"responding": scan.responding, "total": scan.total},
+        "whitelisted": scan.whitelisted,
+    })
+
+
 def _render_jsonl(scans: list[ScanResult], *, defang: bool) -> str:
-    lines = []
-    for s in scans:
-        lines.append(json.dumps({
-            "ioc": _ioc(s, defang),
-            "type": s.ioc_type.value,
-            "verdict": s.verdict.value,
-            "coverage": {"responding": s.responding, "total": s.total},
-            "whitelisted": s.whitelisted,
-        }))
-    return "\n".join(lines)
+    return "\n".join(render_jsonl_line(s, defang=defang) for s in scans)
 
 
 _CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
