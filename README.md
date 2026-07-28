@@ -203,7 +203,7 @@ JSON is the only format that carries the full per-provider breakdown — `jsonl`
 
 ## Providers
 
-iocscan ships with 17 providers. **Verdict** providers contribute a vote to the final verdict; **enrichment** providers add context (ASN, certificates, ports, whois age) without influencing the score.
+iocscan ships with 17 providers. **Verdict** providers contribute a vote to the final verdict; **enrichment** providers add context (ASN, certificates, ports, whois age, Tor exit status) without influencing the score.
 
 | Provider | Role | Key | IOC types | Official site |
 |---|---|---|---|---|
@@ -214,7 +214,7 @@ iocscan ships with 17 providers. **Verdict** providers contribute a vote to the 
 | CIRCL Hashlookup | Verdict | none | hash | <https://hashlookup.circl.lu> |
 | Feodo Tracker | Verdict (authoritative) | none | IP | <https://feodotracker.abuse.ch> |
 | Spamhaus DROP | Verdict (authoritative) | none | IP | <https://www.spamhaus.org/drop/> |
-| Tor Exit List | Verdict | none | IP | <https://check.torproject.org/exit-addresses> |
+| Tor Exit List | Enrichment | none | IP | <https://check.torproject.org/exit-addresses> |
 | VirusTotal | Verdict (weight ×2) | free 500/day | IP, domain, URL, hash | <https://www.virustotal.com> |
 | AbuseIPDB | Verdict | free 1000/day | IP | <https://www.abuseipdb.com> |
 | AlienVault OTX | Verdict (weight ×2) | free | IP, domain, URL, hash | <https://otx.alienvault.com> |
@@ -358,10 +358,10 @@ echo "login-secure[.]bank-update[.]top" | python -m iocscan
 
 1. If any **authoritative** provider (URLhaus, Spamhaus DROP, Feodo Tracker, MalwareBazaar) returns `malicious` → final `malicious`, regardless of coverage.
 2. Otherwise, if fewer than `min_coverage` providers (default 3) respond non-error/non-unknown → `unknown`.
-3. Otherwise weighted vote at ≥30%: VirusTotal and OTX count as 2; others count as 1.
-4. Whitelist override: if the IOC is a bundled-whitelist or Tranco top-1K domain, `malicious`/`suspicious` is clamped to `clean` (and the table marks it as whitelisted).
+3. Otherwise weighted vote at ≥30%: VirusTotal and OTX count as 2; others count as 1. `malicious` additionally requires total malicious weight ≥ 2 (one multi-engine provider, or two independent sources) — a lone weight-1 hit is demoted to `suspicious`. A malicious vote below the 30% bar likewise floors the verdict at `suspicious` — it is never silently outvoted to `clean`.
+4. Whitelist override: if the IOC is a bundled-whitelist or Tranco top-1K domain, `malicious`/`suspicious` is clamped to `clean` (and the table marks it as whitelisted). Tranco entries that are public suffixes (e.g. `github.io`, `blogspot.com`) match exact only — their subdomains are attacker-controlled and never inherit the whitelist.
 
-Record-based providers (VirusTotal, urlscan, OTX for URLs, hash lookups) vote `unknown` when they hold no record of an IOC — absence of evidence is not evidence of absence. Curated blocklists are different: "not listed" is a real observation there, so Feodo, Spamhaus, Tor, URLhaus and ThreatFox still cast a clean vote when they have no hit (the `— (no hit - clean)` cell above).
+Record-based providers (VirusTotal, urlscan, OTX for URLs, hash lookups) vote `unknown` when they hold no record of an IOC — absence of evidence is not evidence of absence. Curated blocklists are different: "not listed" is a real observation there, so Feodo, Spamhaus, URLhaus and ThreatFox still cast a clean vote when they have no hit (the `— (no hit - clean)` cell above). The Tor exit list is enrichment-only: being (or not being) a Tor exit is context, not a vote.
 
 For URLs this matters in practice: a URL nobody has ever seen (no URLhaus listing, no VirusTotal record, no OTX pulses, few urlscan scans) falls below `min_coverage` and comes back `unknown` (exit code `5`) rather than `clean` (exit `0`). Scripts that branch on the exit code for URL batches should treat `5` as "insufficient data", not "safe".
 
