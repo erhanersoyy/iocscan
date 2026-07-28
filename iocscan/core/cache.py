@@ -79,12 +79,12 @@ class Cache:
             # by a pre-fix version of iocscan can still hold them — without
             # this filter a stale 'error' row would suppress re-querying that
             # provider until it ages out of the TTL window.
-            "SELECT provider, verdict, score, error, raw_json, latency_ms, details_json "
+            "SELECT provider, verdict, score, error, raw_json, latency_ms, details_json, fetched_at "
             "FROM results WHERE ioc = ? AND fetched_at > ? AND verdict != 'error'",
             (ioc, cutoff),
         ).fetchall()
         out: dict[str, ProviderResult] = {}
-        for provider, verdict, score, error, raw_json, latency, details_json in rows:
+        for provider, verdict, score, error, raw_json, latency, details_json, fetched_at in rows:
             details = tuple(json.loads(details_json)) if details_json else ()
             out[provider] = ProviderResult(
                 provider=provider,
@@ -94,6 +94,7 @@ class Cache:
                 error=error,
                 latency_ms=latency,
                 details=details,
+                fetched_at=fetched_at,
             )
         return out
 

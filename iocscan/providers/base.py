@@ -40,6 +40,10 @@ class ProviderResult:
     error: str | None
     latency_ms: int
     details: tuple[str, ...] = ()
+    # Epoch seconds of the lookup that produced this result. None means it was
+    # fetched during the current run; a value means it came from the cache and
+    # the verdict is that old.
+    fetched_at: int | None = None
 
 
 class Provider(ABC):

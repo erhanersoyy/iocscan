@@ -507,6 +507,21 @@ async def _run_scan(parsed, config, args) -> int:
             print(render_export(scans_out, fmt, defang=args.defang))
         else:  # table
             console = make_console(ascii_only=args.ascii, theme=args.theme)
+            if not console.is_terminal:
+                # Piped/redirected output loses the footer (TTY-only), so a
+                # saved table would carry no scan time or tool version — the
+                # provenance an IR artifact needs.
+                from datetime import datetime, timezone
+
+                from iocscan import __version__
+                stamp = (
+                    datetime.now(timezone.utc)
+                    .isoformat(timespec="seconds").replace("+00:00", "Z")
+                )
+                print(
+                    f"# iocscan {__version__} · scanned {stamp} · "
+                    f"{cache_hits} cached / {cache_fresh} fresh"
+                )
             render_table(
                 scans_out, console,
                 wide=args.wide,
