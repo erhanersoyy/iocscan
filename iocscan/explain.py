@@ -20,7 +20,10 @@ from iocscan.core.cache import Cache
 from iocscan.core.config import Config
 from iocscan.core.ioc import detect_type
 from iocscan.core.scan import _apply_whitelist, scan_ioc
-from iocscan.core.verdict import AUTHORITATIVE, WEIGHTS, aggregate, coverage
+from iocscan.core.verdict import (
+    AUTHORITATIVE, MIN_MALICIOUS_WEIGHT, VOTE_THRESHOLD_PCT, WEIGHTS,
+    aggregate, coverage, meets_threshold, vote_weights,
+)
 from iocscan.providers import ALL_PROVIDERS
 from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
 from iocscan.ui.console import make_console
@@ -100,14 +103,7 @@ def _math_panel(
     merged: list[ProviderResult], ioc: str, ioc_type: IOCType, min_coverage: int,
 ) -> Panel:
     enrichment_only = {p.name for p in ALL_PROVIDERS if p.enrichment_only}
-    responding = [
-        r for r in merged
-        if r.verdict not in (Verdict.ERROR, Verdict.UNKNOWN)
-        and r.provider not in enrichment_only
-    ]
-    mal_w = sum(WEIGHTS.get(r.provider, 1) for r in responding if r.verdict == Verdict.MALICIOUS)
-    susp_w = sum(WEIGHTS.get(r.provider, 1) for r in responding if r.verdict == Verdict.SUSPICIOUS)
-    total_w = sum(WEIGHTS.get(r.provider, 1) for r in responding)
+    mal_w, susp_w, total_w = vote_weights(merged, enrichment_only=enrichment_only)
     raw_verdict = aggregate(merged, min_coverage=min_coverage, enrichment_only=enrichment_only)
     # Match `_run_scan`'s post-aggregation clamp so the math panel agrees
     # with what `iocscan <ioc>` prints for whitelisted hosts.
@@ -116,7 +112,7 @@ def _math_panel(
 
     lines: list[str] = []
     auth_hit = next(
-        (r for r in responding
+        (r for r in merged
          if r.provider in AUTHORITATIVE and r.verdict == Verdict.MALICIOUS),
         None,
     )
@@ -131,8 +127,19 @@ def _math_panel(
     if total_w:
         mal_pct = mal_w / total_w * 100
         ms_pct = (mal_w + susp_w) / total_w * 100
-        lines.append(f"malicious share:    {mal_w}/{total_w} = {mal_pct:.1f}% (threshold 30%)")
+        lines.append(
+            f"malicious share:    {mal_w}/{total_w} = {mal_pct:.1f}% "
+            f"(threshold {VOTE_THRESHOLD_PCT}%)"
+        )
         lines.append(f"+ suspicious share: {mal_w + susp_w}/{total_w} = {ms_pct:.1f}%")
+        if raw_verdict == Verdict.SUSPICIOUS:
+            if meets_threshold(mal_w, total_w):
+                lines.append(
+                    f"demote: lone weak malicious source -> SUSPICIOUS "
+                    f"(MALICIOUS needs weight >= {MIN_MALICIOUS_WEIGHT})"
+                )
+            elif not meets_threshold(mal_w + susp_w, total_w):
+                lines.append("floor: malicious vote below threshold -> at least SUSPICIOUS")
     if whitelisted and raw_verdict != final:
         lines.append(f"whitelisted: yes  ({raw_verdict.value.upper()} -> {final.value.upper()})")
     lines.append(f"final verdict: {final.value.upper()}")

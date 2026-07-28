@@ -216,7 +216,7 @@ def _render_transposed(
 _GLYPH_ROWS: list[tuple[str, str, str, str, str, bool]] = [
     (verdict_glyph(Verdict.MALICIOUS), verdict_glyph(Verdict.MALICIOUS, ascii_only=True),
      "verdict.malicious", "malicious",
-     "Confirmed malicious — authoritative blocklist hit or ≥ 30% weighted vote.", True),
+     "Confirmed malicious — authoritative blocklist hit or ≥ 30% weighted vote (weight ≥ 2).", True),
     (verdict_glyph(Verdict.SUSPICIOUS), verdict_glyph(Verdict.SUSPICIOUS, ascii_only=True),
      "verdict.suspicious", "suspicious",
      "Flagged by some providers but below the malicious threshold.", True),
