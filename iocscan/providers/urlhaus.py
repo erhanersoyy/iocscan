@@ -49,10 +49,40 @@ class URLhaus(Provider):
         except ValueError:
             return ProviderResult(self.name, Verdict.ERROR, "", None, "parse error", latency)
         if body.get("query_status") == "ok":
-            # /v1/host/ returns url_count; /v1/url/ returns threat (e.g.
-            # "malware_download"). Prefer threat label when present.
-            score = body.get("threat") or f"{body.get('url_count', '?')} urls"
-            return ProviderResult(self.name, Verdict.MALICIOUS, score, body, None, latency)
+            if ioc_type == IOCType.URL:
+                # The listing is about exactly this URL, so it stays a malicious
+                # indicator even after takedown — an endpoint that fetched it is
+                # still compromised.
+                details = (
+                    (f"url_status: {body['url_status']}",)
+                    if body.get("url_status") else ()
+                )
+                return ProviderResult(
+                    self.name, Verdict.MALICIOUS, body.get("threat") or "listed",
+                    body, None, latency, details=details,
+                )
+            # Host lookups only prove that *some* URL on this host was listed at
+            # *some* point — shared hosting, CDN edges and cleaned-up sites all
+            # match. urlhaus is authoritative (a single MALICIOUS short-circuits
+            # the verdict), so require a currently-online URL before claiming
+            # that bar; a purely historical listing stays SUSPICIOUS.
+            urls = [u for u in (body.get("urls") or []) if isinstance(u, dict)]
+            online = [u for u in urls if u.get("url_status") == "online"]
+            total = body.get("url_count") or len(urls) or 0
+            details = (f"urls: {len(online)} online / {total} total",) if urls else ()
+            if online:
+                threat = next((u.get("threat") for u in online if u.get("threat")), None)
+                score = (
+                    f"{threat} ({len(online)} online)" if threat
+                    else f"{len(online)} online urls"
+                )
+                return ProviderResult(
+                    self.name, Verdict.MALICIOUS, score, body, None, latency, details=details,
+                )
+            return ProviderResult(
+                self.name, Verdict.SUSPICIOUS, f"{total} urls (none online)",
+                body, None, latency, details=details,
+            )
         return ProviderResult(self.name, Verdict.CLEAN, "—", body, None, latency)
 
     def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
