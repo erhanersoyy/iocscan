@@ -74,6 +74,24 @@ def _read_inputs(args) -> list[str]:
     return items
 
 
+def _select_providers(providers, only: str, skip: str):
+    """Filter the provider list by the --only / --skip name lists.
+
+    Unknown names are rejected rather than ignored: a typo like `--skip vt`
+    would otherwise silently query the provider the user meant to drop.
+    """
+    known = {p.name for p in providers}
+    wanted = [n.strip() for n in only.split(",") if n.strip()]
+    unwanted = [n.strip() for n in skip.split(",") if n.strip()]
+    for name in (*wanted, *unwanted):
+        if name not in known:
+            raise ValueError(
+                f"unknown provider: {name!r} (known: {', '.join(sorted(known))})"
+            )
+    selected = [p for p in providers if not wanted or p.name in wanted]
+    return [p for p in selected if p.name not in unwanted]
+
+
 _SUBCOMMANDS = {"config", "cache", "providers", "whitelist", "explain", "health", "glyphs"}
 
 
@@ -162,6 +180,18 @@ def _build_scan_parser() -> argparse.ArgumentParser:
         choices=("input", "verdict", "coverage"),
         default="input",
         help="output order (default: input; verdict = worst-first; coverage = most-evidence-first)",
+    )
+    p.add_argument(
+        "--only",
+        default="",
+        metavar="NAMES",
+        help="comma-separated provider names to query exclusively (see 'iocscan providers')",
+    )
+    p.add_argument(
+        "--skip",
+        default="",
+        metavar="NAMES",
+        help="comma-separated provider names to exclude (applied after --only)",
     )
     p.add_argument(
         "--include",
@@ -286,6 +316,8 @@ def main(argv: list[str] | None = None) -> int:
         args.sort = "input"
         args.include = ""
         args.exclude = ""
+        args.only = ""
+        args.skip = ""
         args.abusech_key = None
         args.vt_key = None
         args.abuseipdb_key = None
@@ -304,6 +336,13 @@ def main(argv: list[str] | None = None) -> int:
                 f"error: --json conflicts with --format {args.format}; use one or the other",
                 file=sys.stderr,
             )
+            return 3
+        # Reject unknown provider names during arg validation too, so a typo
+        # costs no API quota.
+        try:
+            _select_providers(ALL_PROVIDERS, args.only, args.skip)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
             return 3
 
     # Root stays at WARNING even under --debug: raising it to DEBUG makes
@@ -396,17 +435,22 @@ async def _run_scan(parsed, config, args) -> int:
     cache = None if args.no_cache else Cache(cache_path, ttl_seconds=config.cache_ttl_hours * 3600)
     cache_hits = 0
     cache_fresh = 0
+    active_providers = _select_providers(ALL_PROVIDERS, args.only, args.skip)
+    active_names = {p.name for p in active_providers}
     start_wall = time.perf_counter()
     try:
         scans = []
         async with _make_client(config.timeout_seconds) as client:
             for ioc, ioc_type in parsed:
                 cached = cache.get(ioc) if cache else {}
+                # A cached row for a de-selected provider must not sneak back
+                # into the merged results (and into the verdict).
+                cached = {k: v for k, v in cached.items() if k in active_names}
                 if cached:
                     cache_hits += 1
                 else:
                     cache_fresh += 1
-                providers_to_query = [p for p in ALL_PROVIDERS if p.name not in cached]
+                providers_to_query = [p for p in active_providers if p.name not in cached]
                 applicable = [p for p in providers_to_query if ioc_type in p.supports]
                 total_providers = len(applicable)
 
@@ -434,7 +478,7 @@ async def _run_scan(parsed, config, args) -> int:
 
                 if cached:
                     merged_results = list(cached.values()) + scan.provider_results
-                    enrichment_only = {p.name for p in ALL_PROVIDERS if p.enrichment_only}
+                    enrichment_only = {p.name for p in active_providers if p.enrichment_only}
                     v = aggregate(
                         merged_results, min_coverage=config.min_coverage,
                         enrichment_only=enrichment_only,
@@ -486,14 +530,14 @@ async def _run_scan(parsed, config, args) -> int:
                 print("warning: --json is deprecated; use --format json", file=sys.stderr)
 
         if args.links_only:
-            _emit_links(scans_out, ALL_PROVIDERS)
+            _emit_links(scans_out, active_providers)
             return exit_code
         if args.quiet:
             _emit_quiet(scans_out, defang=args.defang)
         elif fmt == "json":
             payload_str = render_json(
                 scans_out, min_coverage=config.min_coverage,
-                defang=args.defang, providers=ALL_PROVIDERS,
+                defang=args.defang, providers=active_providers,
             )
             inc = [s.strip() for s in args.include.split(",") if s.strip()]
             exc = [s.strip() for s in args.exclude.split(",") if s.strip()]
@@ -526,7 +570,7 @@ async def _run_scan(parsed, config, args) -> int:
                 scans_out, console,
                 wide=args.wide,
                 ascii_only=args.ascii, defang=args.defang,
-                providers=ALL_PROVIDERS,
+                providers=active_providers,
                 links=args.cell_links,
             )
             if console.is_terminal and len(scans_out) > 0:

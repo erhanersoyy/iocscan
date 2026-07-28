@@ -134,6 +134,8 @@ Pick the two or three you actually use. The point is: one IOC → one short comm
 | `-q`, `--quiet` | Suppress table and footer; emit one TSV line per IOC (`IOC\tverdict\tcoverage`) for scripting. |
 | `--links-only` | Emit `IOC\tprovider\tpermalink` TSV (only rows where a permalink exists); suppresses normal output. |
 | `--sort <key>` | Output order: `input` (default), `verdict` (worst-first), `coverage` (most-evidence-first). |
+| `--only <names>` | Query only these providers (comma-separated; see `iocscan providers`). Useful for bulk runs where a rate-limited provider dominates the wall clock. |
+| `--skip <names>` | Exclude these providers (applied after `--only`). |
 | `--include <paths>` | JSON only: comma-separated dot-paths to keep (e.g. `results.*.ioc,results.*.verdict`). |
 | `--exclude <paths>` | JSON only: comma-separated dot-paths to drop (applied after `--include`). |
 | `--<provider>-key <key>` | Pass a provider key on the CLI (`--vt-key`, `--abuseipdb-key`, `--otx-key`, `--greynoise-key`, `--abusech-key`, `--urlscan-key`). Insecure — visible via `ps`; prefer env vars or `config set`. |
