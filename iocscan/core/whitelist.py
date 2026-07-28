@@ -1,8 +1,8 @@
 """Whitelist of well-known infrastructure and CDN domains.
 
 If an IOC matches an entry exactly — or is a subdomain of a suffix-trusted
-entry (see _domain_sets: public-suffix Tranco entries match exact only) —
-any MALICIOUS/SUSPICIOUS verdict is overridden to CLEAN. This filters out
+entry (see _domain_sets: PSL-suffix entries match exact only) — any
+MALICIOUS/SUSPICIOUS verdict is overridden to CLEAN. This filters out
 common false positives from high-traffic domains that appear in TI feeds
 as collateral.
 """
@@ -50,19 +50,21 @@ def _tranco_cache() -> frozenset[str]:
 def _domain_sets(tranco: frozenset[str]) -> tuple[frozenset[str], frozenset[str]]:
     """(exact, suffix) whitelist sets for a given Tranco snapshot.
 
-    Every entry matches exactly. Subdomain (suffix) trust is narrower:
-    bundled entries are hand-curated so all qualify — including the few that
-    are themselves private-PSL suffixes (googleapis.com, akamaihd.net) —
-    but a Tranco entry qualifies only if it is not a public suffix: the
-    ranking includes user-content apexes (github.io, blogspot.com) whose
-    subdomains are attacker-controlled.
+    Every entry matches exactly, but only entries that are not PSL suffixes
+    extend trust to subdomains — regardless of who curated them. Suffix
+    apexes (github.io, blogspot.com from Tranco; googleapis.com,
+    akamaihd.net from the bundled list) host tenant content, so their
+    subdomains are third-party-controlled and must not inherit the
+    whitelist. Extends bd5fa7c, which removed amazonaws.com/cloudfront.net
+    outright; keeping these exact-only preserves apex FP suppression.
 
     Keyed on the Tranco snapshot so a reloaded cache recomputes both sets.
     """
-    suffix_ok = WHITELIST_DOMAINS | frozenset(
-        d for d in tranco if _EXTRACT(d, include_psl_private_domains=True).domain
+    exact = WHITELIST_DOMAINS | tranco
+    suffix_ok = frozenset(
+        d for d in exact if _EXTRACT(d, include_psl_private_domains=True).domain
     )
-    return WHITELIST_DOMAINS | tranco, suffix_ok
+    return exact, suffix_ok
 
 
 def is_whitelisted(ioc: str, ioc_type: IOCType) -> bool:
