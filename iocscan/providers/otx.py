@@ -87,6 +87,11 @@ class OTX(Provider):
             v = Verdict.MALICIOUS
         elif count >= 1:
             v = Verdict.SUSPICIOUS
+        elif ioc_type == IOCType.URL:
+            # OTX's URL indicator corpus is far thinner than its domain/IP/hash
+            # coverage, so zero pulses on a URL means "no record", not "known
+            # good" — and a weight-2 CLEAN would dilute another provider's hit.
+            return ProviderResult(self.name, Verdict.UNKNOWN, "no URL record", data, None, latency)
         else:
             v = Verdict.CLEAN
         return ProviderResult(self.name, v, f"{count} pulses", data, None, latency)

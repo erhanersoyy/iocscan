@@ -10,6 +10,11 @@ from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, e
 
 ENDPOINT = "https://urlscan.io/api/v1/search/"
 
+# Below this many scans, "nobody flagged it" is an absence of evidence rather
+# than evidence of absence — vote UNKNOWN (excluded from coverage) instead of
+# adding a CLEAN that dilutes another provider's hit.
+_MIN_SCANS_FOR_CLEAN = 5
+
 
 class URLScan(Provider):
     name = "urlscan"
@@ -62,8 +67,13 @@ class URLScan(Provider):
                 f"{total} scans ({malicious_count} malicious)",
                 data, None, latency,
             )
+        if total < _MIN_SCANS_FOR_CLEAN:
+            return ProviderResult(
+                self.name, Verdict.UNKNOWN, f"{total} scans (insufficient)",
+                data, None, latency,
+            )
         # Scan volume is popularity, not risk — with zero malicious verdicts
-        # across all returned scans this is evidence of a benign URL.
+        # across a meaningful number of scans this is evidence of a benign URL.
         return ProviderResult(
             self.name, Verdict.CLEAN, f"{total} scans (0 malicious)", data, None, latency,
         )
