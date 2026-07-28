@@ -1,13 +1,16 @@
 """Whitelist of well-known infrastructure and CDN domains.
 
-If an IOC matches (exact or subdomain), any MALICIOUS/SUSPICIOUS verdict is
-overridden to CLEAN. This filters out common false positives from
-high-traffic domains that appear in TI feeds as collateral.
+If an IOC matches an entry exactly — or is a subdomain of a suffix-trusted
+entry (see _domain_sets: public-suffix Tranco entries match exact only) —
+any MALICIOUS/SUSPICIOUS verdict is overridden to CLEAN. This filters out
+common false positives from high-traffic domains that appear in TI feeds
+as collateral.
 """
 from __future__ import annotations
 
 from functools import lru_cache
 
+from iocscan.core.psl import EXTRACT as _EXTRACT
 from iocscan.core.tranco import load_cache
 from iocscan.providers.base import IOCType
 
@@ -43,8 +46,23 @@ def _tranco_cache() -> frozenset[str]:
     return frozenset(load_cache(_tranco_mod.CACHE_PATH))
 
 
-def _combined() -> frozenset[str]:
-    return WHITELIST_DOMAINS | _tranco_cache()
+@lru_cache(maxsize=1)
+def _domain_sets(tranco: frozenset[str]) -> tuple[frozenset[str], frozenset[str]]:
+    """(exact, suffix) whitelist sets for a given Tranco snapshot.
+
+    Every entry matches exactly. Subdomain (suffix) trust is narrower:
+    bundled entries are hand-curated so all qualify — including the few that
+    are themselves private-PSL suffixes (googleapis.com, akamaihd.net) —
+    but a Tranco entry qualifies only if it is not a public suffix: the
+    ranking includes user-content apexes (github.io, blogspot.com) whose
+    subdomains are attacker-controlled.
+
+    Keyed on the Tranco snapshot so a reloaded cache recomputes both sets.
+    """
+    suffix_ok = WHITELIST_DOMAINS | frozenset(
+        d for d in tranco if _EXTRACT(d, include_psl_private_domains=True).domain
+    )
+    return WHITELIST_DOMAINS | tranco, suffix_ok
 
 
 def is_whitelisted(ioc: str, ioc_type: IOCType) -> bool:
@@ -52,13 +70,9 @@ def is_whitelisted(ioc: str, ioc_type: IOCType) -> bool:
     if ioc_type != IOCType.DOMAIN:
         return False
     ioc_low = ioc.lower().strip()
-    combined = _combined()
-    if ioc_low in combined:
+    exact, suffix_ok = _domain_sets(_tranco_cache())
+    if ioc_low in exact:
         return True
     parts = ioc_low.split(".")
-    # Try every suffix (sub.example.com -> example.com, com)
-    for i in range(1, len(parts)):
-        suffix = ".".join(parts[i:])
-        if suffix in combined:
-            return True
-    return False
+    # Try every parent suffix (sub.example.com -> example.com)
+    return any(".".join(parts[i:]) in suffix_ok for i in range(1, len(parts)))

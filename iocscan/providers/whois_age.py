@@ -28,15 +28,10 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-import tldextract
 
 from iocscan.core.config import Config
+from iocscan.core.psl import EXTRACT as _EXTRACT
 from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
-
-# Snapshot-only PSL: empty `suffix_list_urls` + `cache_dir=None` mean this
-# never fetches or caches at runtime — only the snapshot bundled in the
-# package. Used by _registrable_domain.
-_EXTRACT = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None)
 
 PORT = 43
 _QUERY_TIMEOUT = 5.0
