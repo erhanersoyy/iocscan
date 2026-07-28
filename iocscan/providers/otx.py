@@ -65,12 +65,22 @@ class OTX(Provider):
             # Trust only canonical sources so a spoofed response can't inject an
             # arbitrary entry to force CLEAN.
             validation = data.get("validation")
-            if isinstance(validation, list) and any(
-                isinstance(v, dict) and v.get("source") in _TRUSTED_VALIDATION_SOURCES
-                for v in validation
-            ):
-                return ProviderResult(self.name, Verdict.CLEAN, "whitelisted", data, None, latency)
+            matched = [
+                v.get("source") for v in validation
+                if isinstance(v, dict) and v.get("source") in _TRUSTED_VALIDATION_SOURCES
+            ] if isinstance(validation, list) else []
             count = int(data.get("pulse_info", {}).get("count", 0))
+            if matched:
+                # The clamp turns a weight-2 vote CLEAN. Say so out loud: an
+                # analyst must be able to see that N pulses were overridden and
+                # by which list, rather than reading a bare "whitelisted".
+                lines = [f"whitelisted by OTX source: {', '.join(sorted(set(matched)))}"]
+                if count:
+                    lines.append(f"suppressed pulse count: {count}")
+                return ProviderResult(
+                    self.name, Verdict.CLEAN, "whitelisted", data, None, latency,
+                    details=tuple(lines),
+                )
         except (ValueError, KeyError):
             return ProviderResult(self.name, Verdict.ERROR, "", None, "parse error", latency)
         if count >= 3:
