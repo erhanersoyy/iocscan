@@ -112,8 +112,29 @@ def load_config(cli_keys: dict[str, str] | None = None) -> Config:
 
     return Config(
         keys=merged,
-        cache_ttl_hours=int(settings.get("cache_ttl_hours", 24)),
-        timeout_seconds=int(settings.get("timeout_seconds", 20)),
-        min_coverage=int(settings.get("min_coverage", 3)),
+        cache_ttl_hours=_setting_int(settings, "cache_ttl_hours", 24, minimum=0),
+        timeout_seconds=_setting_int(settings, "timeout_seconds", 20, minimum=1),
+        min_coverage=_setting_int(settings, "min_coverage", 3, minimum=1),
         path=path,
     )
+
+
+def _setting_int(settings: dict, key: str, default: int, *, minimum: int) -> int:
+    """Read an int setting; warn and fall back to the default when the value
+    is malformed or below `minimum`. config.toml is hand-editable, so a bad
+    value must degrade loudly, not crash or silently distort scans."""
+    raw = settings.get(key, default)
+    try:
+        # bool/float are rejected, not coerced: TOML `true` would int() to 1
+        # and `2.9` would silently truncate — both must warn instead.
+        val = None if isinstance(raw, (bool, float)) else int(raw)
+    except (TypeError, ValueError):
+        val = None
+    if val is None or val < minimum:
+        print(
+            f"warning: [settings] {key}={raw!r} is invalid (minimum {minimum}); "
+            f"using {default}",
+            file=sys.stderr,
+        )
+        return default
+    return val
