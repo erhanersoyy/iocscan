@@ -43,9 +43,12 @@ class GreyNoise(Provider):
             classification = data.get("classification", "unknown")
         except ValueError:
             return ProviderResult(self.name, Verdict.ERROR, "", None, "parse error", latency)
-        name = data.get("name", "")
+        name = str(data.get("name") or "")  # "name": null must not break the never-raise rule
+        if name.lower() == "unknown":  # GreyNoise's sentinel for an unattributed actor
+            name = ""
         if classification == "malicious":
-            return ProviderResult(self.name, Verdict.MALICIOUS, name or "malicious", data, None, latency)
+            detail = f"malicious ({name})" if name else "malicious"
+            return ProviderResult(self.name, Verdict.MALICIOUS, detail, data, None, latency)
         if classification == "benign":
             return ProviderResult(self.name, Verdict.CLEAN, f"benign: {name}".strip(": "), data, None, latency)
         return ProviderResult(self.name, Verdict.UNKNOWN, classification, data, None, latency)
