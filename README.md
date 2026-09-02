@@ -177,6 +177,7 @@ Each provider column reports one cell per IOC. The cell tells you what the provi
 | `?` | Provider responded but the result is inconclusive (ambiguous score, insufficient data). Does not count toward coverage. |
 | `n/a` | Provider does not apply to this IOC type (e.g. an IP-only feed against a domain). Excluded from coverage. Only shown in the `--wide` grid; the compact default omits the row entirely. |
 | `0/92`, `50 pulses`, `tor exit`, `15%` | Numeric or labelled score returned by the provider. Interpretation is provider-specific. |
+| `0/7 attributing (26 raw)` | OTX only: pulses that actually attribute this IOC, out of the clone-collapsed total (`raw` counts pulses before collapsing). A pulse naming hundreds of thousands of indicators is a bulk feed — the IOC co-occurs with malicious things rather than being reported as one — so it does not vote. The `details` lines report how many bulk feeds were skipped and how large they were, plus the dominant tags of whichever set decided the score. |
 | `✗ <msg>` | Hard failure: network error, 5xx response, or a parse error. Does not count toward coverage. |
 | `▲ 429 rate limit` | Provider rate-limited the request. Retryable; does not count toward coverage. |
 | `⚡ auth failed` | The API key is missing, wrong, or expired. Fix with `config set` or the matching env var. |
@@ -362,6 +363,8 @@ echo "login-secure[.]bank-update[.]top" | python -m iocscan
 4. Whitelist override: if the IOC is a bundled-whitelist or Tranco top-1K domain, `malicious`/`suspicious` is clamped to `clean` (and the table marks it as whitelisted). Whitelist entries that are public suffixes (e.g. `github.io`, `blogspot.com`, `googleapis.com`) match exact only — their subdomains are tenant-controlled and never inherit the whitelist.
 
 Record-based providers (VirusTotal, urlscan, OTX for URLs, hash lookups) vote `unknown` when they hold no record of an IOC — absence of evidence is not evidence of absence. Curated blocklists are different: "not listed" is a real observation there, so Feodo, Spamhaus, URLhaus and ThreatFox still cast a clean vote when they have no hit (the `— (no hit - clean)` cell above). The Tor exit list is enrichment-only: being (or not being) a Tor exit is context, not a vote.
+
+OTX abstains the same way when every pulse naming an IOC is a bulk feed: it holds evidence but cannot attribute it, so it votes `unknown` rather than casting an affirmative weight-2 `clean` that would dilute another provider's hit. In a sample of 30 mid-tier legitimate domains this happened to 4 of them. It costs nothing when a VirusTotal key is configured (coverage stays at 3 of 4), but with an OTX key and no VirusTotal key those IOCs drop to 2 responding providers and come back `unknown` (exit `5`) instead of `clean` (exit `0`).
 
 For URLs this matters in practice: a URL nobody has ever seen (no URLhaus listing, no VirusTotal record, no OTX pulses, few urlscan scans) falls below `min_coverage` and comes back `unknown` (exit code `5`) rather than `clean` (exit `0`). Scripts that branch on the exit code for URL batches should treat `5` as "insufficient data", not "safe".
 

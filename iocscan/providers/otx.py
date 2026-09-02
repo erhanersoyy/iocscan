@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import statistics
 import time
 from urllib.parse import quote
 
@@ -14,7 +15,65 @@ BASE = "https://otx.alienvault.com/api/v1/indicators"
 # "validation" list — a spoofed/MitM response could otherwise inject an
 # arbitrary entry to force CLEAN and suppress a malicious verdict (OTX votes
 # with weight 2 in aggregation).
-_TRUSTED_VALIDATION_SOURCES = {"majestic", "alexa", "whitelist"}
+_TRUSTED_VALIDATION_SOURCES = {"majestic", "alexa", "whitelist", "akamai"}
+
+# Largest pulse that still counts as attribution. A pulse naming half a
+# million indicators is a bulk OSINT dump: the IOC merely co-occurs with
+# malicious things instead of being reported as one. Live calibration
+# (2026-08): pulses that genuinely attribute a domain carry 135-571
+# indicators while bulk feeds start at 2,135, so 1000 sits in the empty gap
+# between the two populations.
+SPECIFICITY_MAX = 1000
+
+# Longest pulse tag rendered into a result row.
+_MAX_TAG = 32
+
+
+def _pl(n: int, word: str) -> str:
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
+def _root_pulses(pulses: list[dict]) -> list[dict]:
+    """Collapse OTX clone chains — a pulse cloned N times is one report, not
+    N. Clones nest (A cloned into B cloned into C), so walk back to the root.
+    """
+    by_id = {p["id"]: p for p in pulses if p.get("id")}
+    roots: dict[str, dict] = {}
+    for i, p in enumerate(pulses):
+        seen: set[str] = set()
+        while (c := p.get("cloned_from")) and c in by_id and c not in seen:
+            seen.add(c)
+            p = by_id[c]
+        roots[p.get("id") or f"#{i}"] = p
+    return list(roots.values())
+
+
+def _attributes(pulse: dict) -> bool:
+    """An unknown pulse size is not evidence of bulkiness: only a pulse we
+    know to be huge is demoted, so missing data can never hide a real hit."""
+    n = pulse.get("indicator_count")
+    return not isinstance(n, int) or n <= SPECIFICITY_MAX
+
+
+def _top_tags(pulses: list[dict], limit: int = 3) -> list[str]:
+    """Tags are free text written by pulse authors. The UI escapes markup but
+    not whitespace, so collapse runs of it before clipping — a tag of 30
+    newlines is 30 characters and would render as 30 blank rows in one cell."""
+    counts: dict[str, int] = {}
+    for p in pulses:
+        tags = p.get("tags")
+        if not isinstance(tags, list):
+            continue
+        for t in tags:
+            if not isinstance(t, str):
+                continue
+            t = " ".join(t.split())
+            if not t:
+                continue
+            if len(t) > _MAX_TAG:
+                t = t[:_MAX_TAG - 1] + "\u2026"
+            counts[t] = counts.get(t, 0) + 1
+    return [t for t, _ in sorted(counts.items(), key=lambda kv: -kv[1])][:limit]
 
 
 class OTX(Provider):
@@ -59,7 +118,8 @@ class OTX(Provider):
             return ProviderResult(self.name, Verdict.ERROR, "", None, f"{resp.status_code}", latency)
         try:
             data = resp.json()
-            # OTX's own validation list (majestic / alexa / whitelist) marks the
+            # OTX's own validation list (majestic / alexa / whitelist / akamai
+            # popular-domain rankings) marks the
             # indicator as known-good. It wins over pulse count: popular legit
             # domains accrue pulses from phishing reports that impersonate them.
             # Trust only canonical sources so a spoofed response can't inject an
@@ -69,7 +129,8 @@ class OTX(Provider):
                 v.get("source") for v in validation
                 if isinstance(v, dict) and v.get("source") in _TRUSTED_VALIDATION_SOURCES
             ] if isinstance(validation, list) else []
-            count = int(data.get("pulse_info", {}).get("count", 0))
+            info = data.get("pulse_info", {})
+            count = int(info.get("count", 0))
             if matched:
                 # The clamp turns a weight-2 vote CLEAN. Say so out loud: an
                 # analyst must be able to see that N pulses were overridden and
@@ -81,12 +142,55 @@ class OTX(Provider):
                     self.name, Verdict.CLEAN, "whitelisted", data, None, latency,
                     details=tuple(lines),
                 )
-        except (ValueError, KeyError):
+            listed = info.get("pulses")
+            listed = [p for p in listed if isinstance(p, dict)] if isinstance(listed, list) else []
+            roots = _root_pulses(listed)
+            clones = len(listed) - len(roots)
+            lines = []
+            if clones:
+                lines.append(f"{_pl(clones, 'clone')} collapsed into {_pl(len(roots), 'root pulse')}")
+            sized = any(isinstance(p.get("indicator_count"), int) for p in roots)
+            if not sized:
+                # No pulse sizes to judge by. Fall back to OTX's own total,
+                # minus only the duplicates we could actually prove.
+                n = count - clones
+                score = _pl(n, "pulse") + (f" ({count} raw)" if clones else "")
+            else:
+                # Sizes are known, so attribution can be told apart from mere
+                # co-occurrence. Pulses past OTX's page stay uninspected and
+                # are counted as neither — unknown evidence is not malicious
+                # evidence, and treating it as such nullified this filter for
+                # every IOC with more pulses than the page holds.
+                attributing = [p for p in roots if _attributes(p)]
+                bulk = [p for p in roots if not _attributes(p)]
+                n = len(attributing)
+                score = f"{n}/{len(roots)} attributing" + (
+                    f" ({count} raw)" if count > len(roots) else "")
+                if bulk:
+                    sizes = sorted(p["indicator_count"] for p in bulk)
+                    lines.append(
+                        f"{_pl(len(bulk), 'bulk feed')} ignored: smallest {sizes[0]:,} "
+                        f"indicators, median {int(statistics.median(sizes)):,}"
+                    )
+                if tags := _top_tags(attributing or bulk):
+                    lines.append(
+                        f"{'attributing' if attributing else 'bulk-feed'} tags: {', '.join(tags)}"
+                    )
+            details = tuple(lines)
+        except (ValueError, KeyError, AttributeError, TypeError):
             return ProviderResult(self.name, Verdict.ERROR, "", None, "parse error", latency)
-        if count >= 3:
+
+        if n >= 3:
             v = Verdict.MALICIOUS
-        elif count >= 1:
+        elif n >= 1:
             v = Verdict.SUSPICIOUS
+        elif sized:
+            # OTX holds pulses it cannot attribute to this IOC. That is
+            # evidence we cannot classify, not a clean bill of health: an
+            # affirmative weight-2 CLEAN would dilute another provider's hit.
+            return ProviderResult(
+                self.name, Verdict.UNKNOWN, score, data, None, latency, details=details,
+            )
         elif ioc_type == IOCType.URL:
             # OTX's URL indicator corpus is far thinner than its domain/IP/hash
             # coverage, so zero pulses on a URL means "no record", not "known
@@ -94,7 +198,7 @@ class OTX(Provider):
             return ProviderResult(self.name, Verdict.UNKNOWN, "no URL record", data, None, latency)
         else:
             v = Verdict.CLEAN
-        return ProviderResult(self.name, v, f"{count} pulses", data, None, latency)
+        return ProviderResult(self.name, v, score, data, None, latency, details=details)
 
     def permalink(self, ioc: str, ioc_type: IOCType) -> str | None:
         if ioc_type == IOCType.IP:
