@@ -176,7 +176,8 @@ Each provider column reports one cell per IOC. The cell tells you what the provi
 | `— (no hit - clean)` | Provider ran successfully and found nothing on this IOC. Counts as a clean vote toward the verdict. |
 | `?` | Provider responded but the result is inconclusive (ambiguous score, insufficient data). Does not count toward coverage. |
 | `n/a` | Provider does not apply to this IOC type (e.g. an IP-only feed against a domain). Excluded from coverage. Only shown in the `--wide` grid; the compact default omits the row entirely. |
-| `0/92`, `50 pulses`, `tor exit`, `15%` | Numeric or labelled score returned by the provider. Interpretation is provider-specific. |
+| `0/92`, `50 pulses`, `15%` | Numeric or labelled score returned by the provider. Interpretation is provider-specific. |
+| `tor exit`, `tor exit (bad)`, `tor guard`, `tor relay` | Tor provider only: which role this IP plays in the Tor network. Enrichment — informative, never a vote. See [Tor node classification](#tor-node-classification). |
 | `0/7 attributing (26 raw)` | OTX only: pulses that actually attribute this IOC, out of the clone-collapsed total (`raw` counts pulses before collapsing). A pulse naming hundreds of thousands of indicators is a bulk feed — the IOC co-occurs with malicious things rather than being reported as one — so it does not vote. The `details` lines report how many bulk feeds were skipped and how large they were, plus the dominant tags of whichever set decided the score. |
 | `✗ <msg>` | Hard failure: network error, 5xx response, or a parse error. Does not count toward coverage. |
 | `▲ 429 rate limit` | Provider rate-limited the request. Retryable; does not count toward coverage. |
@@ -204,7 +205,7 @@ JSON is the only format that carries the full per-provider breakdown — `jsonl`
 
 ## Providers
 
-iocscan ships with 17 providers. **Verdict** providers contribute a vote to the final verdict; **enrichment** providers add context (ASN, certificates, ports, whois age, Tor exit status) without influencing the score.
+iocscan ships with 17 providers. **Verdict** providers contribute a vote to the final verdict; **enrichment** providers add context (ASN, certificates, ports, whois age, Tor node role) without influencing the score.
 
 | Provider | Role | Key | IOC types | Official site |
 |---|---|---|---|---|
@@ -215,7 +216,7 @@ iocscan ships with 17 providers. **Verdict** providers contribute a vote to the 
 | CIRCL Hashlookup | Verdict | none | hash | <https://hashlookup.circl.lu> |
 | Feodo Tracker | Verdict (authoritative) | none | IP | <https://feodotracker.abuse.ch> |
 | Spamhaus DROP | Verdict (authoritative) | none | IP | <https://www.spamhaus.org/drop/> |
-| Tor Exit List | Enrichment | none | IP | <https://check.torproject.org/exit-addresses> |
+| Tor Relay List | Enrichment | none | IP | <https://onionoo.torproject.org> |
 | VirusTotal | Verdict (weight ×2) | free 500/day | IP, domain, URL, hash | <https://www.virustotal.com> |
 | AbuseIPDB | Verdict | free 1000/day | IP | <https://www.abuseipdb.com> |
 | AlienVault OTX | Verdict (weight ×2) | free | IP, domain, URL, hash | <https://otx.alienvault.com> |
@@ -229,6 +230,41 @@ iocscan ships with 17 providers. **Verdict** providers contribute a vote to the 
 > abuse.ch endpoints (URLhaus, ThreatFox, MalwareBazaar, YARAify) require an Auth-Key on their query APIs. Registration is free at <https://auth.abuse.ch> — the same single key covers all four.
 
 > "Authoritative" means a single `malicious` hit from that provider is enough to mark the IOC `malicious` regardless of what the others say. See [Verdict logic](#verdict-logic-in-short).
+
+### Tor node classification
+
+The Tor provider reads the Tor Project's own [Onionoo](https://onionoo.torproject.org) relay directory (`type=relay&running=true`) instead of the plain-text exit list, so it reports **which role an IP plays in the Tor network** rather than only whether it is an exit. Coverage is IPv4 *and* IPv6; the old `torbulkexitlist` was exit-only and contained no IPv6 addresses at all.
+
+The roles sit at opposite ends of a Tor circuit, which is why they mean opposite things:
+
+```
+[ user ] --> GUARD --> MIDDLE --> EXIT --> [ your server ]
+             (entry)             (exit)
+                ^                   ^
+        outbound: someone     inbound: someone
+        inside your network   reached you from
+        is using Tor          behind Tor
+```
+
+| Cell | Verdict | Implies | Meaning |
+|---|---|---|---|
+| `tor exit (bad)` | `suspicious` | inbound | Directory authorities flagged this exit `BadExit` — traffic tampering, SSL stripping, content injection. Unlike the other three this is an actual malice signal, not just "Tor was used". |
+| `tor exit` | `suspicious` | inbound | Last hop out of Tor, and therefore the source address your logs will show. The client's real IP is not recoverable and blocking does not stick — the next request comes from a different exit. False-positive risk is very low. |
+| `tor guard` | `suspicious` | outbound | Entry point into Tor: clients connect *to* guards. One of your hosts talking to a guard means someone **inside** your network is using Tor — policy violation, or C2 / exfil tunnelled over it. The exit list could never surface this. |
+| `tor relay` | `clean` | — | A running relay that is neither guard nor exit. Not an alert — context that explains why another provider flagged the address. |
+| `—` | `clean` | — | Not a Tor relay. |
+
+Labels rank `bad > exit > guard > relay`, and the order is load-bearing: in a recent snapshot 1,587 of the 2,226 exit IPs (71%) also carried the `Guard` flag. Ranked the other way round, most real exits would be reported as guards and inbound anonymised traffic would be missed.
+
+Snapshot sizes, for scale — the network churns constantly, so treat these as orders of magnitude: roughly 9,700 relay IPs (~6,700 IPv4, ~3,000 IPv6), of which ~2,200 are exits and ~6,400 guards, plus a few dozen `BadExit`. The feed this replaces covered ~1,300 IPv4 addresses and nothing else.
+
+All four signals are enrichment-only: they are rendered in the table but never vote and never count toward coverage. Running Tor is not a crime — journalists, activists and ordinary privacy-conscious users share the network with the attackers. "Tor" is context for the analyst, not evidence that an IP is malicious.
+
+If the Onionoo snapshot is more than 48 hours old the provider returns an error instead of an answer. A `clean` derived from stale relay data is a worse outcome than an honest "unknown".
+
+**Inbound example.** A burst of failed logins from a single address scores `tor exit`. The source is anonymised, so blocking it buys nothing; pivot to behavioural controls — rate limiting, MFA, account lockout.
+
+**Outbound example.** A workstation in your firewall logs is reaching an address that scores `tor guard`. Nothing in a normal corporate environment does that: treat it as Tor client activity on that host and work backwards to the process that opened the connection.
 
 ---
 
@@ -362,7 +398,7 @@ echo "login-secure[.]bank-update[.]top" | python -m iocscan
 3. Otherwise weighted vote at ≥30%: VirusTotal and OTX count as 2; others count as 1. `malicious` additionally requires total malicious weight ≥ 2 (one multi-engine provider, or two independent sources) — a lone weight-1 hit is demoted to `suspicious`. A malicious vote below the 30% bar likewise floors the verdict at `suspicious` — it is never silently outvoted to `clean`.
 4. Whitelist override: if the IOC is a bundled-whitelist or Tranco top-1K domain, `malicious`/`suspicious` is clamped to `clean` (and the table marks it as whitelisted). Whitelist entries that are public suffixes (e.g. `github.io`, `blogspot.com`, `googleapis.com`) match exact only — their subdomains are tenant-controlled and never inherit the whitelist.
 
-Record-based providers (VirusTotal, urlscan, OTX for URLs, hash lookups) vote `unknown` when they hold no record of an IOC — absence of evidence is not evidence of absence. Curated blocklists are different: "not listed" is a real observation there, so Feodo, Spamhaus, URLhaus and ThreatFox still cast a clean vote when they have no hit (the `— (no hit - clean)` cell above). The Tor exit list is enrichment-only: being (or not being) a Tor exit is context, not a vote.
+Record-based providers (VirusTotal, urlscan, OTX for URLs, hash lookups) vote `unknown` when they hold no record of an IOC — absence of evidence is not evidence of absence. Curated blocklists are different: "not listed" is a real observation there, so Feodo, Spamhaus, URLhaus and ThreatFox still cast a clean vote when they have no hit (the `— (no hit - clean)` cell above). The Tor relay list is enrichment-only: an IP's role in the Tor network — exit, guard, plain relay, or none of them — is context, not a vote.
 
 OTX abstains the same way when every pulse naming an IOC is a bulk feed: it holds evidence but cannot attribute it, so it votes `unknown` rather than casting an affirmative weight-2 `clean` that would dilute another provider's hit. In a sample of 30 mid-tier legitimate domains this happened to 4 of them. It costs nothing when a VirusTotal key is configured (coverage stays at 3 of 4), but with an OTX key and no VirusTotal key those IOCs drop to 2 responding providers and come back `unknown` (exit `5`) instead of `clean` (exit `0`).
 
