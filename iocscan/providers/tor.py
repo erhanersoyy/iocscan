@@ -9,7 +9,14 @@ from datetime import datetime, timezone
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
+from iocscan.providers.base import (
+    IOCType,
+    Provider,
+    ProviderResult,
+    Verdict,
+    err_result as _err,
+    feed_status_error,
+)
 
 # Onionoo is the Tor Project's own metrics API. `fields` trims the ~30 MB full
 # document down to ~1.2 MB; `exit_addresses` is what a Tor user's traffic
@@ -173,7 +180,7 @@ class Tor(Provider):
                 body = bytearray()
                 async with client.stream("GET", ENDPOINT) as resp:
                     if resp.status_code >= 400:
-                        raise ValueError(f"{resp.status_code}")
+                        raise ValueError(feed_status_error(resp.status_code))
                     async for chunk in resp.aiter_bytes():
                         body.extend(chunk)
                         if len(body) > MAX_BODY:

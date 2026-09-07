@@ -7,7 +7,14 @@ import time
 import httpx
 
 from iocscan.core.config import Config
-from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict, err_result as _err
+from iocscan.providers.base import (
+    IOCType,
+    Provider,
+    ProviderResult,
+    Verdict,
+    err_result as _err,
+    feed_status_error,
+)
 
 ENDPOINT = "https://www.spamhaus.org/drop/drop.txt"
 _CACHE: dict[str, list[tuple[ipaddress.IPv4Network, str]]] = {}
@@ -67,7 +74,7 @@ class Spamhaus(Provider):
                 body = bytearray()
                 async with client.stream("GET", ENDPOINT) as resp:
                     if resp.status_code >= 400:
-                        raise ValueError(f"{resp.status_code}")
+                        raise ValueError(feed_status_error(resp.status_code))
                     async for chunk in resp.aiter_bytes():
                         body.extend(chunk)
                         if len(body) > MAX_BODY:

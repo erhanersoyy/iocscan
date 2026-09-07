@@ -90,6 +90,28 @@ class Provider(ABC):
         return None
 
 
+def feed_status_error(status_code: int) -> str:
+    """Error text for a failed bulk-feed download.
+
+    The whole-feed providers fetch one document instead of querying an IOC, so
+    404 means the feed itself is gone — an outage operators need to see in
+    `iocscan health`, not the "no record" UNKNOWN a per-IOC lookup returns.
+    The 429/auth wording matches every other provider so `ui.glyph
+    .classify_error` routes these to the retryable and fixable cells.
+    """
+    if status_code == 429:
+        return "429 rate limit"
+    if status_code in (401, 403):
+        return "auth failed"
+    if status_code == 404:
+        return "404 feed not found"
+    # Unmapped codes keep the sibling providers' bare form; the " server" suffix
+    # is what observability._5XX_RE keys on to fill health's last_5xx_at column.
+    if status_code >= 500:
+        return f"{status_code} server"
+    return f"{status_code}"
+
+
 def err_result(name: str, msg: str, start: float) -> ProviderResult:
     """Build an ERROR ProviderResult with the elapsed latency since `start`."""
     latency = int((time.perf_counter() - start) * 1000)
