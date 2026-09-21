@@ -13,7 +13,6 @@ import sys
 from pathlib import Path
 
 from rich.console import Console
-from rich.markup import escape as _escape
 from rich.panel import Panel
 
 from iocscan.core.cache import Cache
@@ -26,7 +25,7 @@ from iocscan.core.verdict import (
 )
 from iocscan.providers import ALL_PROVIDERS
 from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
-from iocscan.ui.console import make_console
+from iocscan.ui.console import escape as _escape, make_console
 from iocscan.ui.glyph import verdict_label
 
 # Cap raw response so a chatty provider can't drown the panel.

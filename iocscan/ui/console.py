@@ -13,11 +13,25 @@ ANSI color.
 from __future__ import annotations
 
 import os
+import re
 import sys
 
 from rich.console import Console
+from rich.markup import escape as _markup_escape
 
 from iocscan.ui.themes import DEFAULT_THEME, get_theme
+
+# C0 controls except newline, DEL, C1 controls (U+009B is a one-character CSI)
+# and the bidi overrides/isolates that visually reorder a line.
+_TERMINAL_CONTROLS = re.compile(r"[\x00-\x09\x0b-\x1f\x7f-\x9f\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+
+
+def escape(text: str) -> str:
+    """Escape provider text for rich markup *and* for the terminal. Rich's own
+    escape handles markup only and passes ESC through, so a hostile tag, PTR
+    hostname or WHOIS field could move the cursor and overwrite the verdict.
+    Newlines survive: explain's multi-line raw JSON relies on them."""
+    return _markup_escape(_TERMINAL_CONTROLS.sub(" ", text))
 
 
 def make_console(

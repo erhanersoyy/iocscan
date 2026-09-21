@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from rich import box
 from rich.console import Console
-from rich.markup import escape as _escape
 from rich.table import Table
 
 from iocscan.core.ioc import to_defanged
 from iocscan.core.scan import ScanResult
 from iocscan.providers.base import Provider, Verdict
+from iocscan.ui.console import escape as _escape
 from iocscan.ui.glyph import (
     CELL_AUTH_FAIL,
     CELL_AUTH_FAIL_ASCII,
