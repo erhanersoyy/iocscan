@@ -25,8 +25,29 @@ _TRUSTED_VALIDATION_SOURCES = {"majestic", "alexa", "whitelist", "akamai"}
 # between the two populations.
 SPECIFICITY_MAX = 1000
 
-# Longest pulse tag rendered into a result row.
+# Longest pulse tag / pulse name rendered into a result row.
 _MAX_TAG = 32
+_MAX_NAME = 80
+
+# Tags that describe the sample rather than the threat, compared lowercased
+# with punctuation stripped. They crowd the family name out of the top three:
+# moonlighthathel.org's were OTX indicator types ("filehashsha256, ..."), and
+# gaiadeqi.com's URLhaus pulses tag Mozi alongside 32-bit / elf / mips at the
+# same count, so the family lost the tie on list order. OTX's structured
+# malware_families field is empty on those automated pulses (live, 2026-09).
+_NOISE_TAGS = frozenset({
+    # OTX indicator types
+    "ipv4", "ipv6", "domain", "hostname", "url", "uri", "email", "cidr",
+    "filehashmd5", "filehashsha1", "filehashsha256", "filehashpehash", "filehashimphash",
+    "filepath", "mutex", "cve", "yara", "ja3", "bitcoinaddress", "sslcertfingerprint",
+    # CPU architectures
+    "32bit", "64bit", "x86", "x64", "x8664", "amd64", "i386", "i686", "arm", "arm4",
+    "arm5", "arm6", "arm7", "arm64", "aarch64", "mips", "mipsel", "mpsl", "sh4",
+    "sparc", "m68k", "powerpc", "ppc",
+    # File formats and URLhaus delivery descriptors
+    "elf", "exe", "dll", "apk", "msi", "lnk", "iso", "zip", "rar", "7z", "jar", "js",
+    "vbs", "hta", "ps1", "bat", "sh", "doc", "docx", "xls", "xlsx", "pdf", "uawget",
+})
 
 
 def _pl(n: int, word: str) -> str:
@@ -55,25 +76,48 @@ def _attributes(pulse: dict) -> bool:
     return not isinstance(n, int) or n <= SPECIFICITY_MAX
 
 
+def _clip(text: object, limit: int) -> str:
+    """Tags and names are free text written by pulse authors. The UI escapes
+    markup but neither whitespace nor control characters: a tag of 30 newlines
+    rendered as 30 blank rows in one cell, and Rich passes ESC through, so a
+    pulse name could move the cursor and overwrite the verdict. Blank out every
+    non-printable character, then collapse the runs before clipping."""
+    if not isinstance(text, str):
+        return ""
+    text = " ".join("".join(c if c.isprintable() else " " for c in text).split())
+    return text[:limit - 1] + "\u2026" if len(text) > limit else text
+
+
 def _top_tags(pulses: list[dict], limit: int = 3) -> list[str]:
-    """Tags are free text written by pulse authors. The UI escapes markup but
-    not whitespace, so collapse runs of it before clipping — a tag of 30
-    newlines is 30 characters and would render as 30 blank rows in one cell."""
     counts: dict[str, int] = {}
     for p in pulses:
         tags = p.get("tags")
         if not isinstance(tags, list):
             continue
         for t in tags:
-            if not isinstance(t, str):
-                continue
-            t = " ".join(t.split())
-            if not t:
-                continue
-            if len(t) > _MAX_TAG:
-                t = t[:_MAX_TAG - 1] + "\u2026"
-            counts[t] = counts.get(t, 0) + 1
+            t = _clip(t, _MAX_TAG)
+            if t and "".join(filter(str.isalnum, t.lower())) not in _NOISE_TAGS:
+                counts[t] = counts.get(t, 0) + 1
     return [t for t, _ in sorted(counts.items(), key=lambda kv: -kv[1])][:limit]
+
+
+def _most_specific(pulses: list[dict]) -> str | None:
+    """Name the smallest named pulse: the fewer indicators a report carries,
+    the more directly it is about this IOC. Pooled tags are no stand-in —
+    moonlighthathel.org showed a 749-indicator dump's type labels
+    ("filehashsha256") while the untagged 8-indicator campaign report that
+    actually named the domain stayed invisible."""
+    named = [(p, n) for p in pulses if (n := _clip(p.get("name"), _MAX_NAME))]
+    if not named:
+        return None
+
+    def size(pn: tuple[dict, str]) -> float:
+        n = pn[0].get("indicator_count")
+        return n if isinstance(n, int) else float("inf")
+
+    p, name = min(named, key=size)
+    n = p.get("indicator_count")
+    return f"most specific pulse: {name}" + (f" ({_pl(n, 'indicator')})" if isinstance(n, int) else "")
 
 
 class OTX(Provider):
@@ -172,6 +216,10 @@ class OTX(Provider):
                         f"{_pl(len(bulk), 'bulk feed')} ignored: smallest {sizes[0]:,} "
                         f"indicators, median {int(statistics.median(sizes)):,}"
                     )
+                # Both lines: automated feed pulses are named by date, so the
+                # name alone would drop the malware family their tags carry.
+                if line := _most_specific(attributing):
+                    lines.append(line)
                 if tags := _top_tags(attributing or bulk):
                     lines.append(
                         f"{'attributing' if attributing else 'bulk-feed'} tags: {', '.join(tags)}"
