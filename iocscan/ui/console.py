@@ -22,16 +22,19 @@ from rich.markup import escape as _markup_escape
 from iocscan.ui.themes import DEFAULT_THEME, get_theme
 
 # C0 controls except newline, DEL, C1 controls (U+009B is a one-character CSI)
-# and the bidi overrides/isolates that visually reorder a line.
-_TERMINAL_CONTROLS = re.compile(r"[\x00-\x09\x0b-\x1f\x7f-\x9f\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+# and the bidi marks/overrides/isolates that visually reorder a line.
+_TERMINAL_CONTROLS = re.compile(r"[\x00-\x09\x0b-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]")
 
 
-def escape(text: str) -> str:
+def escape(text: str, *, multiline: bool = False) -> str:
     """Escape provider text for rich markup *and* for the terminal. Rich's own
     escape handles markup only and passes ESC through, so a hostile tag, PTR
     hostname or WHOIS field could move the cursor and overwrite the verdict.
-    Newlines survive: explain's multi-line raw JSON relies on them."""
-    return _markup_escape(_TERMINAL_CONTROLS.sub(" ", text))
+    A newline in a one-line field (score, error, details line) forges an extra
+    row in the cell, so it is blanked too unless the caller renders a block
+    that needs line breaks (explain's raw JSON)."""
+    text = _TERMINAL_CONTROLS.sub(" ", text)
+    return _markup_escape(text if multiline else text.replace("\n", " "))
 
 
 def make_console(

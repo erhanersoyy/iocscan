@@ -52,7 +52,7 @@ def _render_raw(raw: object) -> list[str]:
     raw_str = json.dumps(raw, indent=2, default=str)
     if len(raw_str) > _RAW_LIMIT:
         raw_str = raw_str[:_RAW_LIMIT] + "…"
-    lines = ["raw:", _escape(raw_str)]
+    lines = ["raw:", _escape(raw_str, multiline=True)]
 
     if whois:
         lines.append("whois:")

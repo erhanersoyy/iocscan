@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import statistics
 import time
+from math import inf
 from urllib.parse import quote
 
 import httpx
@@ -36,13 +37,17 @@ _MAX_NAME = 80
 # same count, so the family lost the tie on list order. OTX's structured
 # malware_families field is empty on those automated pulses (live, 2026-09).
 _NOISE_TAGS = frozenset({
-    # OTX indicator types
-    "ipv4", "ipv6", "domain", "hostname", "url", "uri", "email", "cidr",
+    # OTX indicator types, singular and plural (bulk feeds tag "Domains",
+    # "URLs", "ip addresses", "Files")
+    "ip", "ips", "ipaddress", "ipaddresses", "ipv4", "ipv6", "domain", "domains",
+    "hostname", "hostnames", "url", "urls", "uri", "uris", "email", "emails", "cidr",
+    "file", "files", "hash", "hashes", "md5", "sha1", "sha256", "filehash", "filehashes",
     "filehashmd5", "filehashsha1", "filehashsha256", "filehashpehash", "filehashimphash",
     "filepath", "mutex", "cve", "yara", "ja3", "bitcoinaddress", "sslcertfingerprint",
     # CPU architectures
-    "32bit", "64bit", "x86", "x64", "x8664", "amd64", "i386", "i686", "arm", "arm4",
-    "arm5", "arm6", "arm7", "arm64", "aarch64", "mips", "mipsel", "mpsl", "sh4",
+    "32bit", "64bit", "x86", "x64", "x8664", "amd64", "i386", "i586", "i686", "arm",
+    "arm4", "arm5", "arm6", "arm7", "armv5", "armv6", "armv7", "armv7l", "armv8",
+    "arm64", "aarch64", "mips", "mips64", "mipsel", "mipseb", "mpsl", "sh4",
     "sparc", "m68k", "powerpc", "ppc",
     # File formats and URLhaus delivery descriptors
     "elf", "exe", "dll", "apk", "msi", "lnk", "iso", "zip", "rar", "7z", "jar", "js",
@@ -69,11 +74,19 @@ def _root_pulses(pulses: list[dict]) -> list[dict]:
     return list(roots.values())
 
 
+def _size(pulse: dict) -> int | None:
+    """indicator_count when it is a real count. bool passes isinstance(int), so
+    `true` rendered as "(True indicator)", and a negative count won the
+    most-specific pick over a real report."""
+    n = pulse.get("indicator_count")
+    return n if type(n) is int and n >= 0 else None
+
+
 def _attributes(pulse: dict) -> bool:
     """An unknown pulse size is not evidence of bulkiness: only a pulse we
     know to be huge is demoted, so missing data can never hide a real hit."""
-    n = pulse.get("indicator_count")
-    return not isinstance(n, int) or n <= SPECIFICITY_MAX
+    n = _size(pulse)
+    return n is None or n <= SPECIFICITY_MAX
 
 
 def _clip(text: object, limit: int) -> str:
@@ -89,16 +102,21 @@ def _clip(text: object, limit: int) -> str:
 
 
 def _top_tags(pulses: list[dict], limit: int = 3) -> list[str]:
+    """Count tags by their lowercased alphanumerics, so Mozi / mozi / MOZI are
+    one family, and show the first spelling seen."""
     counts: dict[str, int] = {}
+    shown: dict[str, str] = {}
     for p in pulses:
         tags = p.get("tags")
         if not isinstance(tags, list):
             continue
         for t in tags:
             t = _clip(t, _MAX_TAG)
-            if t and "".join(filter(str.isalnum, t.lower())) not in _NOISE_TAGS:
-                counts[t] = counts.get(t, 0) + 1
-    return [t for t, _ in sorted(counts.items(), key=lambda kv: -kv[1])][:limit]
+            key = "".join(filter(str.isalnum, t.lower()))
+            if key and key not in _NOISE_TAGS:
+                counts[key] = counts.get(key, 0) + 1
+                shown.setdefault(key, t)
+    return [shown[k] for k, _ in sorted(counts.items(), key=lambda kv: -kv[1])][:limit]
 
 
 def _most_specific(pulses: list[dict]) -> str | None:
@@ -107,17 +125,12 @@ def _most_specific(pulses: list[dict]) -> str | None:
     moonlighthathel.org showed a 749-indicator dump's type labels
     ("filehashsha256") while the untagged 8-indicator campaign report that
     actually named the domain stayed invisible."""
-    named = [(p, n) for p in pulses if (n := _clip(p.get("name"), _MAX_NAME))]
+    named = [(p, name) for p in pulses if (name := _clip(p.get("name"), _MAX_NAME))]
     if not named:
         return None
-
-    def size(pn: tuple[dict, str]) -> float:
-        n = pn[0].get("indicator_count")
-        return n if isinstance(n, int) else float("inf")
-
-    p, name = min(named, key=size)
-    n = p.get("indicator_count")
-    return f"most specific pulse: {name}" + (f" ({_pl(n, 'indicator')})" if isinstance(n, int) else "")
+    p, name = min(named, key=lambda pn: inf if (n := _size(pn[0])) is None else n)
+    n = _size(p)
+    return f"most specific pulse: {name}" + ("" if n is None else f" ({_pl(n, 'indicator')})")
 
 
 class OTX(Provider):
@@ -193,7 +206,7 @@ class OTX(Provider):
             lines = []
             if clones:
                 lines.append(f"{_pl(clones, 'clone')} collapsed into {_pl(len(roots), 'root pulse')}")
-            sized = any(isinstance(p.get("indicator_count"), int) for p in roots)
+            sized = any(_size(p) is not None for p in roots)
             if not sized:
                 # No pulse sizes to judge by. Fall back to OTX's own total,
                 # minus only the duplicates we could actually prove.
@@ -211,7 +224,7 @@ class OTX(Provider):
                 score = f"{n}/{len(roots)} attributing" + (
                     f" ({count} raw)" if count > len(roots) else "")
                 if bulk:
-                    sizes = sorted(p["indicator_count"] for p in bulk)
+                    sizes = sorted(_size(p) for p in bulk)
                     lines.append(
                         f"{_pl(len(bulk), 'bulk feed')} ignored: smallest {sizes[0]:,} "
                         f"indicators, median {int(statistics.median(sizes)):,}"
