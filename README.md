@@ -422,16 +422,18 @@ The cache merges with new fetches per-provider — missing providers (e.g. newly
 
 ---
 
-## Whitelist (optional Tranco top-1K)
+## Whitelist (optional Tranco top-1K) and popularity tier
 
-`iocscan` ships with a bundled list of well-known infrastructure domains that always override `malicious`/`suspicious` to `clean`. To augment with the [Tranco](https://tranco-list.eu) top-1K daily list (research-grade popularity ranking):
+`iocscan` ships with a bundled list of well-known infrastructure domains that always override `malicious`/`suspicious` to `clean`. To augment with the [Tranco](https://tranco-list.eu) daily list (research-grade popularity ranking):
 
 ```bash
-python -m iocscan whitelist update   # fetch latest Tranco top-1K (~50 KB)
+python -m iocscan whitelist update   # fetch latest Tranco top-20K (~260 KB)
 python -m iocscan whitelist stats    # cache age, domain count
 ```
 
-The cache lives at `~/.iocscan/tranco-1k.txt`. Re-run `update` weekly to keep it fresh.
+Only the **top 1K** whitelists. Every domain in the top 20K gets a display-only popularity tag in the verdict cell (`top-1k`, `top-10k`, `top-20k`; also `tranco_tier` in `--json` and a line in `explain`). The tag never changes the verdict: ranks past 1K include free-hosting and URL-shortener apexes that attackers abuse. For example, `githubcopilot.com` (rank ~4200) shows `● malicious (4/4) top-10k`. That tells the analyst "popular domain, look again", but iocscan doesn't silently clear it. `⚑` appears only when the verdict was actually clamped. A subdomain takes its registrable domain's rank (`api.github.com` → `github.com`), except under public suffixes like `github.io`.
+
+The cache lives at `~/.iocscan/tranco-20k.txt` (a pre-existing `tranco-1k.txt` is still read until the first `update`, which removes it). Re-run `update` weekly to keep it fresh.
 
 ---
 
@@ -451,7 +453,7 @@ The script walks through four steps, asking for confirmation before each:
 
 | Step | What it removes |
 |---|---|
-| 1 | `~/.iocscan/` — API keys (`config.toml`), TI cache (`cache.db`), Tranco whitelist (`tranco-1k.txt`). Offers to back up `config.toml` first. |
+| 1 | `~/.iocscan/` — API keys (`config.toml`), TI cache (`cache.db`), Tranco cache (`tranco-20k.txt`). Offers to back up `config.toml` first. |
 | 2 | `<project>/.venv/` — the project-only virtualenv (httpx, rich, pytest, …). Other projects' venvs are unaffected. |
 | 3 | The project directory itself — source, tests, local git history. Uncommitted changes are lost. |
 | 4 | **Manual only**: GitHub remote repo deletion (irreversible, never automated). |

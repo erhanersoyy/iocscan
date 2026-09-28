@@ -100,7 +100,7 @@ Subcommands:
   iocscan config {set,show,path}        manage API keys (TOML at ~/.iocscan/config.toml)
   iocscan cache {clear,stats}           inspect or clear the SQLite result cache
   iocscan providers                     list providers, key status, and live quota
-  iocscan whitelist {update,stats}      manage the Tranco top-1K domain cache
+  iocscan whitelist {update,stats}      manage the Tranco top-20K domain cache
   iocscan explain <ioc>                 per-provider rationale and weighted-voting math
   iocscan health [--days N]             provider error rates and p95 latency
 
@@ -132,7 +132,7 @@ def _build_scan_parser() -> argparse.ArgumentParser:
         description=(
             f"Consolidated threat-intel verdict (malicious / suspicious / clean / unknown) for IPs and domains.\n"
             f"Queries {len(ALL_PROVIDERS)} open-source providers concurrently, aggregates with weighted voting,\n"
-            f"and clamps known-good domains via a bundled allowlist + optional Tranco top-1K cache."
+            f"and clamps known-good domains via a bundled allowlist + optional Tranco top-1K cache (top-20K shown as a popularity tier)."
         ),
         epilog=_SCAN_EPILOG,
     )
@@ -268,11 +268,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
     wl_p = sub.add_parser(
         "whitelist",
-        help="manage the Tranco top-1K whitelist cache",
-        description="The Tranco top-1K cache is optional; when present it clamps malicious/suspicious verdicts to clean for popular domains.",
+        help="manage the Tranco top-20K cache",
+        description="The Tranco cache is optional; when present its top 1K clamps malicious/suspicious verdicts to clean, and ranks up to 20K are shown as a display-only popularity tier.",
     )
     wl_sub = wl_p.add_subparsers(dest="wl_cmd", metavar="<action>")
-    wl_sub.add_parser("update", help="fetch latest Tranco top-1K and cache it")
+    wl_sub.add_parser("update", help="fetch latest Tranco top-20K and cache it")
     wl_sub.add_parser("stats", help="show whitelist cache status (size, age)")
 
     health_p = sub.add_parser(
@@ -656,13 +656,15 @@ def _cmd_whitelist(args) -> int:
         except (httpx.HTTPError, ValueError) as e:
             print(f"whitelist update failed: {e}", file=sys.stderr)
             return 4
+        tranco.legacy_path().unlink(missing_ok=True)
         print(f"saved {n} domains to {tranco.CACHE_PATH}")
         return 0
     if args.wl_cmd == "stats":
         age = tranco.cache_age_days()
         cached = tranco.load_cache()
         if age is None:
-            print("tranco cache: not present (run 'iocscan whitelist update')")
+            legacy = " (using legacy top-1K file)" if tranco.legacy_path().exists() else ""
+            print(f"tranco cache: not present{legacy} (run 'iocscan whitelist update')")
         else:
             print(f"tranco cache: {len(cached)} domains, {age} days old at {tranco.CACHE_PATH}")
         from iocscan.core.whitelist import WHITELIST_DOMAINS

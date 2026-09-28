@@ -44,7 +44,7 @@ echo
 if [[ -d "$USER_DATA" ]]; then
   echo "[1/3] User data at $USER_DATA"
   echo "      Contains: config.toml (API keys), cache.db (TI lookups),"
-  echo "                tranco-1k.txt (whitelist cache)."
+  echo "                tranco-20k.txt (Tranco cache)."
 
   if [[ -f "$USER_DATA/config.toml" ]] && confirm "Back up config.toml to ~/iocscan-config-backup.toml first?"; then
     cp "$USER_DATA/config.toml" "$HOME/iocscan-config-backup.toml"

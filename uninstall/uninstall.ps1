@@ -48,7 +48,7 @@ Write-Host ""
 if (Test-Path $UserData) {
     Write-Host "[1/3] User data at $UserData"
     Write-Host "      Contains: config.toml (API keys), cache.db (TI lookups),"
-    Write-Host "                tranco-1k.txt (whitelist cache)."
+    Write-Host "                tranco-20k.txt (Tranco cache)."
 
     $ConfigToml = Join-Path $UserData "config.toml"
     if ((Test-Path $ConfigToml) -and (Confirm-Action "Back up config.toml to ~\iocscan-config-backup.toml first?")) {

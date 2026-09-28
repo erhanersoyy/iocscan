@@ -6,6 +6,7 @@ from rich.table import Table
 
 from iocscan.core.ioc import to_defanged
 from iocscan.core.scan import ScanResult
+from iocscan.core.whitelist import tranco_tier
 from iocscan.providers.base import Provider, Verdict
 from iocscan.ui.console import escape as _escape
 from iocscan.ui.glyph import (
@@ -103,9 +104,14 @@ def _format_verdict_cell(s: ScanResult, *, ascii_only: bool) -> str:
     style = VERDICT_STYLES[s.verdict]
     label = verdict_label(s.verdict, ascii_only=ascii_only)
     text = f"[{style}]{label}[/] ({s.responding}/{s.total})"
-    if s.whitelisted:
-        wl = whitelist_glyph(ascii_only=ascii_only)
-        text += f" [verdict.whitelisted]{wl} 1k[/]"
+    tier = tranco_tier(s.ioc, s.ioc_type)
+    badge = " ".join(filter(None, (
+        whitelist_glyph(ascii_only=ascii_only) if s.whitelisted else None,
+        f"top-{tier}" if tier else None,
+    )))
+    if badge:
+        # The tier is popularity context only; the flag alone means "clamped".
+        text += f" [{'verdict.whitelisted' if s.whitelisted else 'muted'}]{badge}[/]"
     return text
 
 
@@ -239,7 +245,8 @@ _GLYPH_ROWS: list[tuple[str, str, str, str, str, bool]] = [
     ("n/a", "n/a", "muted", "n/a",
      "Provider doesn't support this IOC type.", False),
     (whitelist_glyph(), whitelist_glyph(ascii_only=True), "verdict.whitelisted", "whitelist",
-     "IOC is in the bundled/Tranco whitelist; verdict clamped to clean.", True),
+     "IOC is in the bundled/Tranco top-1K whitelist; verdict clamped to clean. "
+     "top-1k/10k/20k is its Tranco popularity rank (display only).", True),
 ]
 
 # The legend uses "rate-limit"/"auth" wording for the cell markers; the

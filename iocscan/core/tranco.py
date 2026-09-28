@@ -1,12 +1,16 @@
-"""Tranco top-1K mini-fetcher with on-disk cache.
+"""Tranco top-20K mini-fetcher with on-disk cache.
 
 Tranco is a research-grade popularity ranking of internet domains aggregated
 from multiple sources (Cisco Umbrella, Cloudflare Radar, Majestic Million,
 Farsight, CrUX). See https://tranco-list.eu.
 
 Usage:
-    fetch_and_save()        # fetch + save to ~/.iocscan/tranco-1k.txt
-    load_cache()            # return set of domains from disk (or empty)
+    fetch_and_save()        # fetch + save to ~/.iocscan/tranco-20k.txt
+    load_cache()            # return {domain: rank} from disk (or empty)
+
+Only the top WHITELIST_TOP_N clamp verdicts (core/whitelist.py); the rest of
+the list is a display-only popularity tier — rank 1K-20K includes free-hosting
+and shortener apexes that attackers abuse, so it must never whitelist.
     cache_age_days()        # how old is the cache (None if missing)
 """
 from __future__ import annotations
@@ -20,8 +24,10 @@ from pathlib import Path
 import httpx
 
 TRANCO_API_BASE = "https://tranco-list.eu"
-TRANCO_TOP_N = 1000
-CACHE_PATH = Path.home() / ".iocscan" / "tranco-1k.txt"
+TRANCO_TOP_N = 20000
+WHITELIST_TOP_N = 1000
+CACHE_PATH = Path.home() / ".iocscan" / "tranco-20k.txt"
+
 MAX_BODY = 50 * 1024 * 1024  # 50 MB — guard against OOM on hostile/MitM endpoints
 
 
@@ -52,7 +58,7 @@ def _latest_list_url() -> str:
 
 
 def fetch_and_save(*, path: Path = CACHE_PATH) -> int:
-    """Fetch top-1K, write to cache file. Returns count of domains saved."""
+    """Fetch top-20K, write to cache file in rank order. Returns count of domains saved."""
     url = _latest_list_url()
     csv_body = bytearray()
     with httpx.stream("GET", url, timeout=30.0) as resp:
@@ -82,14 +88,25 @@ def fetch_and_save(*, path: Path = CACHE_PATH) -> int:
     return len(domains)
 
 
-def load_cache(path: Path = CACHE_PATH) -> set[str]:
-    """Read cache file. Returns empty set if missing or unreadable."""
+def legacy_path() -> Path:
+    """Pre-0.5 top-1K cache, still read so upgrading doesn't silently drop the
+    whitelist until the next `iocscan whitelist update`. Derived at call time
+    so a repointed CACHE_PATH (tests) never falls back to the real home dir."""
+    return CACHE_PATH.with_name("tranco-1k.txt")
+
+
+def load_cache(path: Path = CACHE_PATH) -> dict[str, int]:
+    """Read cache file as {domain: 1-based rank}. Empty if missing or unreadable."""
     if not path.exists():
-        return set()
+        return {}
     try:
-        return {line.strip().lower() for line in path.read_text().splitlines() if line.strip()}
+        lines = [line.strip().lower() for line in path.read_text().splitlines()]
     except OSError:
-        return set()
+        return {}
+    ranks: dict[str, int] = {}
+    for d in filter(None, lines):
+        ranks.setdefault(d, len(ranks) + 1)
+    return ranks
 
 
 def cache_age_days(path: Path = CACHE_PATH) -> int | None:

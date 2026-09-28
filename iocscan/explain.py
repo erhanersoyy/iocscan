@@ -23,6 +23,7 @@ from iocscan.core.verdict import (
     AUTHORITATIVE, MIN_MALICIOUS_WEIGHT, VOTE_THRESHOLD_PCT, WEIGHTS,
     aggregate, coverage, meets_threshold, vote_weights,
 )
+from iocscan.core.whitelist import tranco_tier
 from iocscan.providers import ALL_PROVIDERS
 from iocscan.providers.base import IOCType, Provider, ProviderResult, Verdict
 from iocscan.ui.console import escape as _escape, make_console
@@ -139,6 +140,8 @@ def _math_panel(
                 )
             elif not meets_threshold(mal_w + susp_w, total_w):
                 lines.append("floor: malicious vote below threshold -> at least SUSPICIOUS")
+    if tier := tranco_tier(ioc, ioc_type):
+        lines.append(f"tranco: top-{tier}" + ("" if tier == "1k" else "  (display only, not whitelisted)"))
     if whitelisted and raw_verdict != final:
         lines.append(f"whitelisted: yes  ({raw_verdict.value.upper()} -> {final.value.upper()})")
     lines.append(f"final verdict: {final.value.upper()}")

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from iocscan import __version__
 from iocscan.core.ioc import to_defanged
 from iocscan.core.scan import ScanResult
+from iocscan.core.whitelist import tranco_tier
 from iocscan.providers.base import Provider
 
 
@@ -29,6 +30,7 @@ def render_json(
                 "type": s.ioc_type.value,
                 "verdict": s.verdict.value,
                 "whitelisted": s.whitelisted,
+                "tranco_tier": tranco_tier(s.ioc, s.ioc_type),
                 "coverage": {"responding": s.responding, "total": s.total},
                 "providers": {
                     r.provider: {

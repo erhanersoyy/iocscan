@@ -11,7 +11,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from iocscan.core.psl import EXTRACT as _EXTRACT
-from iocscan.core.tranco import load_cache
+from iocscan.core.tranco import WHITELIST_TOP_N, load_cache
 from iocscan.providers.base import IOCType
 
 WHITELIST_DOMAINS = frozenset({
@@ -40,10 +40,16 @@ WHITELIST_DOMAINS = frozenset({
 
 
 @lru_cache(maxsize=1)
-def _tranco_cache() -> frozenset[str]:
-    """Load Tranco cache once per process."""
+def _tranco_ranks() -> dict[str, int]:
+    """Load Tranco {domain: rank} once per process."""
     from iocscan.core import tranco as _tranco_mod
-    return frozenset(load_cache(_tranco_mod.CACHE_PATH))
+    return load_cache(_tranco_mod.CACHE_PATH) or load_cache(_tranco_mod.legacy_path())
+
+
+@lru_cache(maxsize=1)
+def _tranco_cache() -> frozenset[str]:
+    """Top-1K slice of the Tranco cache — the only part that whitelists."""
+    return frozenset(d for d, r in _tranco_ranks().items() if r <= WHITELIST_TOP_N)
 
 
 @lru_cache(maxsize=1)
@@ -78,3 +84,27 @@ def is_whitelisted(ioc: str, ioc_type: IOCType) -> bool:
     parts = ioc_low.split(".")
     # Try every parent suffix (sub.example.com -> example.com)
     return any(".".join(parts[i:]) in suffix_ok for i in range(1, len(parts)))
+
+
+def reload() -> None:
+    """Drop the per-process Tranco caches (after `whitelist update`, in tests)."""
+    _tranco_ranks.cache_clear()
+    _tranco_cache.cache_clear()
+
+
+def tranco_tier(ioc: str, ioc_type: IOCType) -> str | None:
+    """Display-only popularity bucket: "1k", "10k", "20k", or None.
+
+    Looks up the host, then its registrable domain (api.github.com -> github.com).
+    Private PSL suffixes stay their own registrable domain, so foo.github.io
+    never inherits github.io's rank. Never affects the verdict.
+    """
+    if ioc_type != IOCType.DOMAIN:
+        return None
+    ranks = _tranco_ranks()
+    host = ioc.lower().strip()
+    reg = _EXTRACT(host, include_psl_private_domains=True).top_domain_under_public_suffix
+    rank = ranks.get(host) or ranks.get(reg)
+    if rank is None:
+        return None
+    return "1k" if rank <= 1000 else "10k" if rank <= 10000 else "20k"
