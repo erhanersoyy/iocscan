@@ -22,7 +22,7 @@ git clone https://github.com/erhanersoyy/iocscan.git
 cd iocscan
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install .                # dependencies + the `iocscan` command
 ```
 
 **Windows (PowerShell):**
@@ -32,87 +32,71 @@ git clone https://github.com/erhanersoyy/iocscan.git
 cd iocscan
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install .                # dependencies + the `iocscan` command
 ```
 
 > On Windows, POSIX file permissions (`0600`) cannot be enforced on `config.toml`. The file is still protected by NTFS ACLs on your user account, but on multi-user machines treat this as weaker than the Unix guarantee. iocscan prints a one-line warning when this applies.
 
-That's it. Every command below assumes the venv is active. Re-activate any new terminal with `source .venv/bin/activate` (or `.venv\Scripts\Activate.ps1` on Windows).
+That's it. `pip install .` installs the dependencies and an `iocscan` command inside the venv. Re-activate the venv in every new terminal with `source .venv/bin/activate` (or `.venv\Scripts\Activate.ps1` on Windows).
+
+**Updating:** after `git pull`, run `pip install .` again — the `iocscan` command runs the installed copy, not the files in the directory.
+
+### Install with an AI coding agent
+
+Using Claude Code, Cursor, Codex or a similar agent that can run terminal commands? Paste this prompt:
+
+```text
+Clone https://github.com/erhanersoyy/iocscan and install it by following the Install section of its README exactly: project-local .venv only, no sudo, no global pip installs. Do not ask me for API keys and do not change any files in the repo. When done, run `iocscan providers` and show me the output. If a step fails, stop and tell me the error instead of trying workarounds.
+```
+
+The prompt keeps the install inside the project's `.venv` and keeps API keys out of the chat history. Add your keys yourself afterwards — see [Configure API keys](#configure-api-keys).
 
 ---
 
 ## Quick start
 
-```bash
-python -m iocscan 1.2.3.4 evil.com           # scan one or more IOCs
-python -m iocscan -f iocs.txt                # one IOC per line, # comments allowed
-cat iocs.txt | python -m iocscan             # pipe from stdin
-python -m iocscan --json 8.8.8.8 > out.json  # machine-readable
-python -m iocscan --quiet -f iocs.txt        # one TSV line per IOC
-python -m iocscan --defang evil.com          # render output as evil[.]com
-python -m iocscan --sort verdict -f iocs.txt # worst-first
-python -m iocscan providers                  # see which providers are active
-```
-
-iocscan understands common defanged formats (`evil[.]com`, `1[.]2[.]3[.]4`, `hxxp://...`) and bare URLs (the hostname is extracted).
-
-> Tip: if `python -m iocscan ...` feels verbose, add an alias to your shell rc:
-> `alias iocscan='python -m iocscan'` — then everything below works as `iocscan ...`.
-
----
-
-## Aliases
-
-A set of alias suggestions is provided to make IOC analysis faster and simpler. Drop them into your shell rc file — `~/.zshrc`, `~/.bashrc`, `~/.config/fish/config.fish`, or whichever shell you use. After reloading (`source ~/.zshrc`), every common triage flow becomes a one-line command.
+Every command in this README assumes the venv is active (your prompt starts with `(.venv)`). The `iocscan` command then works from any directory.
 
 ```bash
-# 1) Base alias — replaces "python -m iocscan" with a short word
-alias ioc='python -m iocscan'                                # ioc 1.2.3.4
-
-# 2) Quick verdict — minimum noise: "ioc<TAB>verdict<TAB>n/m"
-alias ioc-q='python -m iocscan --quiet'                      # ioc-q 1.2.3.4
-
-# 3) Full evidence — every provider's cell, force wide table
-alias ioc-full='python -m iocscan --wide'                    # ioc-full evil.com
-
-# 4) Defanged output — safe to paste into tickets, chat, email
-alias ioc-safe='python -m iocscan --defang'                  # ioc-safe 1.2.3.4
-
-# 5) Explain mode — per-provider rationale and verdict math
-alias ioc-why='python -m iocscan explain'                    # ioc-why 1.2.3.4
-
-# 6) JSON output — pipe into jq, SIEM, Slack bot, anything
-alias ioc-json='python -m iocscan --format json'             # ioc-json evil.com | jq .
-
-# 7) Hyperlinked cells — terminal underlines clickable provider links
-alias ioc-link='python -m iocscan --cell-links --wide'       # ioc-link 1.2.3.4
-
-# 8) Fresh look — bypass cache, useful right after a blocklist update
-alias ioc-fresh='python -m iocscan --no-cache --wide'        # ioc-fresh 1.2.3.4
-
-# 9) Splunk hunt query — emit SPL search string for SOC pivots
-alias ioc-splunk='python -m iocscan -F splunk-spl'           # ioc-splunk 1.2.3.4
-
-# 10) Microsoft Sentinel KQL hunt query
-alias ioc-sentinel='python -m iocscan -F kql-sentinel'       # ioc-sentinel evil.com
-
-# 11) Microsoft Defender KQL hunt query
-alias ioc-defender='python -m iocscan -F kql-defender'       # ioc-defender 1.2.3.4
-
-# 12) CSV export — ticket attachments, spreadsheet imports
-alias ioc-csv='python -m iocscan -F csv'                     # ioc-csv -f iocs.txt > out.csv
-
-# 13) Markdown table — paste straight into PR / Confluence / ticket
-alias ioc-md='python -m iocscan -F markdown'                 # ioc-md 1.2.3.4
-
-# 14) Worst-first sort — surface malicious IOCs at the top of bulk scans
-alias ioc-sort='python -m iocscan --sort verdict'            # ioc-sort -f iocs.txt
-
-# 15) Provider status — see what's active vs. missing-key at a glance
-alias ioc-prov='python -m iocscan providers'                 # ioc-prov
+source ~/iocscan/.venv/bin/activate  # adjust the path; Windows: .venv\Scripts\Activate.ps1
 ```
 
-Pick the two or three you actually use. The point is: one IOC → one short command.
+**First run — see what works out of the box:**
+
+```bash
+iocscan providers  # which providers are active, which need a key
+```
+
+**Scan something:**
+
+```bash
+iocscan 1.2.3.4                           # an IP
+iocscan evil.com                          # a domain
+iocscan "https://evil.com/login"          # a URL
+iocscan 44d88612fea8a8f36de82e1278abb02f  # a file hash (MD5, SHA-1 or SHA-256)
+iocscan 1.2.3.4 evil.com 5.6.7.8          # several at once
+```
+
+**Many IOCs:**
+
+```bash
+iocscan -f iocs.txt                 # one IOC per line, # comments allowed
+cat iocs.txt | iocscan              # or pipe them in
+iocscan --sort verdict -f iocs.txt  # malicious first
+```
+
+**Different output:**
+
+```bash
+iocscan --format json 8.8.8.8 > out.json  # full detail, machine-readable
+iocscan --quiet -f iocs.txt               # one line per IOC: ioc <tab> verdict <tab> coverage
+iocscan --defang evil.com                 # print evil[.]com so it is safe to paste
+iocscan explain evil.com                  # why this verdict?
+```
+
+You can paste IOCs straight from a report: defanged forms (`evil[.]com`, `1[.]2[.]3[.]4`, `hxxps://...`) are converted back automatically. The IOC type is detected for you. URLs must start with `http://` or `https://` (or `hxxp://` / `hxxps://`).
+
+About half the providers work without a key. VirusTotal, OTX, AbuseIPDB and the abuse.ch family need a free one — see [Configure API keys](#configure-api-keys). More examples are in [Usage scenarios](#usage-scenarios).
 
 ---
 
@@ -164,7 +148,7 @@ Four built-in color themes, each WCAG-AA contrast-verified:
 Pick one with `--theme <name>` or set the `IOCSCAN_THEME` env var. Preview every theme with:
 
 ```bash
-python -m iocscan --list-themes
+iocscan --list-themes
 ```
 
 ### Cell semantics
@@ -275,12 +259,12 @@ Three ways to provide keys (lowest → highest priority): config file → enviro
 **Recommended — config file** (stored at `~/.iocscan/config.toml`, mode 0600):
 
 ```bash
-python -m iocscan config set abusech    YOUR_KEY  # single key for all abuse.ch endpoints
-python -m iocscan config set virustotal YOUR_KEY
-python -m iocscan config set abuseipdb  YOUR_KEY
-python -m iocscan config set otx        YOUR_KEY
-python -m iocscan config set greynoise  YOUR_KEY  # optional; raises anonymous rate limit
-python -m iocscan config set urlscan    YOUR_KEY  # optional
+iocscan config set abusech    YOUR_KEY  # single key for all abuse.ch endpoints
+iocscan config set virustotal YOUR_KEY
+iocscan config set abuseipdb  YOUR_KEY
+iocscan config set otx        YOUR_KEY
+iocscan config set greynoise  YOUR_KEY  # optional; raises anonymous rate limit
+iocscan config set urlscan    YOUR_KEY  # optional
 ```
 
 **Environment variables** (useful in CI):
@@ -297,14 +281,14 @@ export IOCSCAN_URLSCAN_KEY=...     # optional
 **CLI flags** (insecure — visible to other local users via `ps`; prefer env or config):
 
 ```bash
-python -m iocscan --vt-key YOUR_KEY 8.8.8.8
+iocscan --vt-key YOUR_KEY 8.8.8.8
 ```
 
 Inspect what's loaded (keys are masked):
 
 ```bash
-python -m iocscan config show
-python -m iocscan config path
+iocscan config show
+iocscan config path
 ```
 
 ---
@@ -314,10 +298,10 @@ python -m iocscan config path
 ### 1. SOC analyst — quick triage
 
 ```bash
-python -m iocscan 203.0.113.10 malicious-domain.test
+iocscan 203.0.113.10 malicious-domain.test
 ```
 
-Output is a colored table with one row per provider plus a final verdict, plus per-IOC coverage (e.g. `7/9 responding`).
+Output is a colored table with one block per IOC: every provider's result on its own line, plus the final verdict and coverage — e.g. `● malicious (7/9)` means 7 of 9 applicable providers gave a usable answer.
 
 ### 2. Bulk scan from a file
 
@@ -328,66 +312,155 @@ Output is a colored table with one row per provider plus a final verdict, plus p
 evil[.]com
 hxxps://phish.example/login
 
-python -m iocscan -f iocs.txt
+iocscan -f iocs.txt
+iocscan -f iocs.txt --sort verdict  # malicious first, clean last
 ```
 
 Blank lines and `#` comments are ignored. Defanged formats are normalised automatically.
 
-### 3. SOAR / SIEM integration with `--json`
+### 3. File hash lookup
 
 ```bash
-python -m iocscan --json -f iocs.txt > results.json
+iocscan 275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f
+iocscan 44d88612fea8a8f36de82e1278abb02f  # MD5 and SHA-1 work too
+```
+
+The hash type is detected from its length. Hashes go to VirusTotal, OTX, ThreatFox, MalwareBazaar, YARAify and CIRCL Hashlookup. Only CIRCL Hashlookup works without a key, so add at least the abuse.ch key (`config set abusech ...`) before relying on hash verdicts.
+
+### 4. Suspicious URL from a phishing email
+
+```bash
+echo "hxxps://login-secure[.]bank-update[.]top/verify" | iocscan
+iocscan --defang "hxxps://login-secure[.]bank-update[.]top/verify"  # keep it defanged in the output too
+```
+
+A URL nobody has reported before often comes back `unknown` (exit `5`) — see [Verdict logic](#verdict-logic-in-short). That means "not enough data", not "safe".
+
+### 5. "Why did it say malicious?" — explain one IOC
+
+```bash
+iocscan explain 203.0.113.10
+```
+
+Prints why each provider voted the way it did, then the voting math: weights, the 30% threshold, whether an authoritative blocklist decided it, the Tranco tier, and whether the whitelist clamped the result. Use it before escalating or before closing a ticket as a false positive.
+
+### 6. SOAR / SIEM integration with JSON
+
+```bash
+iocscan --format json -f iocs.txt > results.json
 ```
 
 ```jsonc
 {
+  "scan": { "timestamp": "2026-09-29T08:12:44Z", "tool_version": "0.4.0", "min_coverage": 3 },
   "results": [
     {
       "ioc": "8.8.8.8",
       "type": "ip",
       "verdict": "clean",
-      "responding": 6,
-      "total": 7,
       "whitelisted": false,
-      "providers": [
-        { "provider": "virustotal", "verdict": "clean", "score": "0/94", "latency_ms": 312 },
-        { "provider": "abuseipdb",  "verdict": "clean", "score": "0%",   "latency_ms": 188 }
-        // ...
-      ]
+      "tranco_tier": null,
+      "coverage": { "responding": 6, "total": 7 },
+      "providers": {
+        "virustotal": {
+          "verdict": "clean", "score": "0/94", "error": null, "latency_ms": 312,
+          "details": [], "cached": false, "fetched_at": "2026-09-29T08:12:44Z",
+          "raw": { /* provider's original response */ },
+          "permalink": "https://www.virustotal.com/gui/ip-address/8.8.8.8"
+        }
+        // ... one entry per provider, keyed by provider name
+      }
     }
   ]
 }
 ```
 
-### 4. CI / CD pipeline — fail the build on malicious IOCs
+Only need a few fields? Trim the output with `--include` / `--exclude` (`*` matches any list index):
 
 ```bash
-python -m iocscan -f deploy-artifacts/ioc-extract.txt
+iocscan --format json --include 'results.*.ioc,results.*.verdict,results.*.coverage' -f iocs.txt
+iocscan --format json --exclude 'results.*.providers' -f iocs.txt  # summary only
+```
+
+For streaming pipelines, `--format jsonl` writes one flat JSON object per IOC per line.
+
+### 7. CI / CD pipeline — fail the build on malicious IOCs
+
+```bash
+iocscan -f deploy-artifacts/ioc-extract.txt
 case $? in
   0) echo "all clean — proceed";;
   1) echo "MALICIOUS IOC found — block release"; exit 1;;
   2) echo "suspicious IOC — manual review";;
+  3) echo "bad input — check the IOC file"; exit 1;;
   4) echo "all providers failed — retry later";;
   5) echo "too little coverage — add API keys";;
 esac
 ```
 
-### 5. Threat hunting — stream from logs
+Or just the verdicts, one TSV line per IOC:
+
+```bash
+iocscan -q -f iocs.txt | awk -F'\t' '$2 == "malicious" { print $1 }'
+```
+
+### 8. Threat hunting — stream from logs
 
 ```bash
 grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' /var/log/access.log \
   | sort -u \
-  | python -m iocscan --json \
+  | iocscan --format json \
   | jq '.results[] | select(.verdict == "malicious") | .ioc'
 ```
 
-### 6. Phishing email triage
-
-Paste defanged indicators from a report straight in:
+### 9. Turn IOCs into a SIEM / EDR hunt query
 
 ```bash
-echo "login-secure[.]bank-update[.]top" | python -m iocscan
+iocscan -F splunk-spl -f iocs.txt       # Splunk SPL
+iocscan -F kql-sentinel -f iocs.txt     # Microsoft Sentinel KQL
+iocscan -F kql-defender -f iocs.txt     # Microsoft Defender KQL
+iocscan -F crowdstrike-fql -f iocs.txt  # CrowdStrike FQL
+iocscan -F elastic-eql -f iocs.txt      # Elastic EQL (also: elastic-lucene)
 ```
+
+Paste the output into your SIEM to find every host that talked to these IOCs. Hunt queries include **every** IOC you gave, whatever its verdict — the point is to search, not to judge.
+
+The one exception is `suricata-ip-rules`: it produces detection rules that get loaded into a sensor, so it only emits `alert` rules for IPs scored `malicious` or `suspicious`:
+
+```bash
+iocscan -F suricata-ip-rules -f iocs.txt > iocscan.rules
+```
+
+### 10. Write-ups, tickets and spreadsheets
+
+```bash
+iocscan -F markdown --defang -f iocs.txt  # table for a ticket / Confluence / PR
+iocscan -F csv -f iocs.txt > triage.csv   # ioc, type, verdict, responding, total, whitelisted
+iocscan --links-only 203.0.113.10         # IOC <tab> provider <tab> link to the provider's own page
+```
+
+`--links-only` is handy when you want to open the evidence in each provider's web UI and attach screenshots.
+
+### 11. Big batches — pick the providers
+
+```bash
+iocscan --skip virustotal -f big-list.txt                       # VT free tier is 4 req/min; skip it for a first pass
+iocscan --only spamhaus,feodo,urlhaus,threatfox -f big-list.txt  # blocklists only — fast
+iocscan --no-cache 203.0.113.10                                 # ignore cached results, ask everyone again
+```
+
+Provider names are the ones listed by `iocscan providers`.
+
+### 12. Something looks off — check the providers
+
+```bash
+iocscan providers        # which providers are active, missing a key, remaining quota
+iocscan health           # error rate, p95 latency, last error per provider (last 7 days)
+iocscan health --days 1  # only today
+iocscan --debug 8.8.8.8  # full request log on stderr (API keys are never printed)
+```
+
+If many IOCs come back `unknown`, `providers` usually shows the reason: a missing key, an expired key (`auth failed`), or a used-up quota (`429 rate limit`).
 
 ---
 
@@ -413,27 +486,55 @@ Results are cached at `~/.iocscan/cache.db` for 24 hours. Cached rows keep the f
 > **Upgrading:** run `iocscan cache clear` once after upgrading. Rows written by an older version were scored under older provider rules, and a cached verdict is replayed as-is until it expires.
 
 ```bash
-python -m iocscan --no-cache 8.8.8.8        # bypass cache for one run
-python -m iocscan cache stats               # rows, IOCs, age, disk size
-python -m iocscan cache clear               # flush everything
+iocscan --no-cache 8.8.8.8  # bypass cache for one run
+iocscan cache stats         # rows, IOCs, age, disk size
+iocscan cache clear         # flush everything
 ```
 
 The cache merges with new fetches per-provider — missing providers (e.g. newly-added API key) are filled in incrementally.
 
 ---
 
-## Whitelist (optional Tranco top-1K) and popularity tier
+## Whitelist and Tranco popularity tier
 
-`iocscan` ships with a bundled list of well-known infrastructure domains that always override `malicious`/`suspicious` to `clean`. To augment with the [Tranco](https://tranco-list.eu) daily list (research-grade popularity ranking):
+Popular, legitimate domains show up in threat feeds all the time (a CDN hosted one bad file, a cloud IP was reused). iocscan handles this in two ways, and they work differently:
+
+| Source | Which domains | What you see | Changes the verdict? |
+|---|---|---|---|
+| Bundled whitelist | ~40 critical-infrastructure domains, always on | `⚑` | **Yes** — `malicious`/`suspicious` becomes `clean` |
+| Tranco rank 1 – 1,000 | top 1K of the [Tranco](https://tranco-list.eu) list (optional) | `⚑ top-1k` | **Yes** — same as above |
+| Tranco rank 1,001 – 10,000 | | `top-10k` | No — label only |
+| Tranco rank 10,001 – 20,000 | | `top-20k` | No — label only |
+
+The Tranco list is optional. Download it once, then refresh it about once a week:
 
 ```bash
-python -m iocscan whitelist update   # fetch latest Tranco top-20K (~260 KB)
-python -m iocscan whitelist stats    # cache age, domain count
+iocscan whitelist update  # download the Tranco top-20K (~260 KB) to ~/.iocscan/tranco-20k.txt
+iocscan whitelist stats   # how many domains, how old the file is
 ```
 
-Only the **top 1K** whitelists. Every domain in the top 20K gets a display-only popularity tag in the verdict cell (`top-1k`, `top-10k`, `top-20k`; also `tranco_tier` in `--json` and a line in `explain`). The tag never changes the verdict: ranks past 1K include free-hosting and URL-shortener apexes that attackers abuse. For example, `githubcopilot.com` (rank ~4200) shows `● malicious (4/4) top-10k`. That tells the analyst "popular domain, look again", but iocscan doesn't silently clear it. `⚑` appears only when the verdict was actually clamped. A subdomain takes its registrable domain's rank (`api.github.com` → `github.com`), except under public suffixes like `github.io`.
+Without it, only the bundled whitelist is active and no `top-Nk` labels are shown.
 
-The cache lives at `~/.iocscan/tranco-20k.txt` (a pre-existing `tranco-1k.txt` is still read until the first `update`, which removes it). Re-run `update` weekly to keep it fresh.
+**Why only the top 1K changes the verdict.** Lower in the ranking you find free-hosting and URL-shortener services that attackers use a lot. Clearing those automatically would hide real attacks. So ranks past 1K only get a label. For example, `githubcopilot.com` (rank ~4,200) shows as `● malicious (4/4) top-10k`: the label tells you "this is a popular domain, look again before you block it", but the verdict stays as it is.
+
+How it reads in the output:
+
+| Output | Meaning |
+|---|---|
+| `○ clean (5/5) ⚑ top-1k` | Whitelisted top-1K domain. If any provider had flagged it, the verdict would still be `clean` |
+| `● malicious (4/4) top-10k` | Popular domain, verdict **not** changed — check it by hand |
+| `● malicious (4/4)` | Not in the Tranco list at all |
+
+The same information is in `--format json` (`whitelisted`, `tranco_tier`) and in `explain` (a `tranco:` line and, if the verdict was changed, a `whitelisted:` line showing the before and after).
+
+Rules worth knowing:
+
+- **Domains only.** IPs, URLs and hashes are never whitelisted and never get a tier.
+- **Subdomains use their parent's rank.** `api.github.com` is ranked as `github.com`.
+- **Shared-hosting domains are the exception.** Anyone can create a subdomain under `github.io`, `blogspot.com`, `googleapis.com` and similar, so `attacker.github.io` does **not** inherit `github.io`'s whitelist entry or rank.
+- **`⚑` means "this domain is on the whitelist"**, whatever the providers said — you also see it on a domain that was clean anyway. To see whether the whitelist actually changed a verdict, run `explain`.
+
+Upgrading from an older version: an existing `~/.iocscan/tranco-1k.txt` is still used until you run `whitelist update`, which replaces it with the 20K file.
 
 ---
 
